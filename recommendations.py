@@ -13,6 +13,101 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
+# Iconos SVG limpios (estilo Lucide/Feather) para visualización en HTML
+# ---------------------------------------------------------------------------
+
+SVG_ICONS = {
+    "BUENA": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+        'fill="none" stroke="#00b894" stroke-width="2.5" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>'
+        '<polyline points="22 4 12 14.01 9 11.01"/></svg>'
+    ),
+    "ACEPTABLE": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+        'fill="none" stroke="#c9a800" stroke-width="2.5" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<circle cx="12" cy="12" r="10"/>'
+        '<line x1="12" y1="8" x2="12" y2="12"/>'
+        '<line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    ),
+    "MODERADO": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+        'fill="none" stroke="#ff9f1c" stroke-width="2.5" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>'
+        '<line x1="12" y1="9" x2="12" y2="13"/>'
+        '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+    ),
+    "ALTO": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+        'fill="none" stroke="#e63946" stroke-width="2.5" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>'
+        '<line x1="12" y1="8" x2="12" y2="12"/>'
+        '<line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    ),
+    "EMERGENCIA": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+        'fill="none" stroke="#8e24aa" stroke-width="2.5" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>'
+        '<line x1="12" y1="8" x2="12" y2="12"/>'
+        '<line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    ),
+    "PELIGROSA": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+        'fill="none" stroke="#5e0035" stroke-width="2.5" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<circle cx="12" cy="12" r="10"/>'
+        '<line x1="12" y1="8" x2="12" y2="12"/>'
+        '<line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+    ),
+    "VIENTO": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>'
+        '</svg>'
+    ),
+    "PRESION": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<circle cx="12" cy="12" r="10"/><path d="m12 14 4-4"/></svg>'
+    ),
+    "TEMPERATURA": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/></svg>'
+    ),
+    "TRAFICO": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/>'
+        '<circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>'
+    ),
+    "INVERSION": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<line x1="2" y1="12" x2="22" y2="12"/>'
+        '<path d="m20 16-4-4 4-4M4 8l4 4-4 4"/></svg>'
+    ),
+    "MEZCLA": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+        'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+        'stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;">'
+        '<line x1="12" y1="19" x2="12" y2="5"/>'
+        '<polyline points="5 12 12 5 19 12"/></svg>'
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
 # Alertas globales
 # ---------------------------------------------------------------------------
 
@@ -22,7 +117,7 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
         return {
             "nivel": "EMERGENCIA",
             "color": "#7E0023",
-            "icono": "🚨",
+            "icono": SVG_ICONS["EMERGENCIA"],
             "mensaje": (
                 "Calidad del aire peligrosa en zonas del campus. "
                 "SUSPENDE actividades al aire libre. Cierra ventanas. "
@@ -34,7 +129,7 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
         return {
             "nivel": "ALTO",
             "color": "#FF0000",
-            "icono": "⚠️",
+            "icono": SVG_ICONS["ALTO"],
             "mensaje": (
                 "Calidad del aire muy mala en parte del polígono. "
                 "Evita actividades físicas exteriores intensas. "
@@ -45,7 +140,7 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
         return {
             "nivel": "MODERADO",
             "color": "#FF7E00",
-            "icono": "🟠",
+            "icono": SVG_ICONS["MODERADO"],
             "mensaje": (
                 "Calidad del aire mala en algunas áreas. Grupos sensibles "
                 "(asmáticos, niños, adultos mayores) deben limitar la "
@@ -56,7 +151,7 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
         return {
             "nivel": "ACEPTABLE",
             "color": "#FFFF00",
-            "icono": "🟡",
+            "icono": SVG_ICONS["ACEPTABLE"],
             "mensaje": (
                 "Calidad del aire aceptable. Personas extremadamente "
                 "sensibles podrían experimentar molestias menores."
@@ -65,7 +160,7 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
     return {
         "nivel": "BUENA",
         "color": "#00E400",
-        "icono": "✅",
+        "icono": SVG_ICONS["BUENA"],
         "mensaje": "Calidad del aire buena. Sin restricciones para actividades al aire libre.",
     }
 
@@ -77,14 +172,17 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
 def mask_recommendation(ica_local: float) -> str:
     """Devuelve recomendación de mascarilla en función del ICA local."""
     if ica_local > 200:
-        return "🚨 Mascarilla N95 obligatoria. Idealmente, permanece en interiores."
+        return (f'{SVG_ICONS["EMERGENCIA"]} <b>Mascarilla N95 obligatoria.</b> '
+                'Idealmente, permanece en interiores.')
     if ica_local > 150:
-        return "⚠️ Mascarilla N95 recomendada en exteriores."
+        return (f'{SVG_ICONS["ALTO"]} <b>Mascarilla N95 recomendada</b> en exteriores.')
     if ica_local > 100:
-        return "🟠 KN95 recomendada para grupos sensibles (asma, alergias, niños)."
+        return (f'{SVG_ICONS["MODERADO"]} <b>KN95 recomendada</b> para grupos sensibles '
+                '(asma, alergias, niños).')
     if ica_local > 50:
-        return "🟡 Cubrebocas opcional, solo si presentas alergias o irritación."
-    return "✅ No es necesario cubrebocas por calidad del aire."
+        return (f'{SVG_ICONS["ACEPTABLE"]} <b>Cubrebocas opcional</b>, solo si presentas '
+                'alergias o irritación.')
+    return f'{SVG_ICONS["BUENA"]} No es necesario cubrebocas por calidad del aire.'
 
 
 # ---------------------------------------------------------------------------
@@ -92,18 +190,18 @@ def mask_recommendation(ica_local: float) -> str:
 # ---------------------------------------------------------------------------
 
 def _categoria_y_color(ica: float) -> tuple[str, str, str]:
-    """Devuelve (nombre_categoría, color_hex, icono)."""
+    """Devuelve (nombre_categoría, color_hex, icono_svg)."""
     if ica <= 50:
-        return "Buena", "#00b894", "✅"
+        return "Buena", "#00b894", SVG_ICONS["BUENA"]
     if ica <= 100:
-        return "Aceptable", "#ffd23f", "🟡"
+        return "Aceptable", "#ffd23f", SVG_ICONS["ACEPTABLE"]
     if ica <= 150:
-        return "Mala", "#ff9f1c", "🟠"
+        return "Mala", "#ff9f1c", SVG_ICONS["MODERADO"]
     if ica <= 200:
-        return "Muy Mala", "#e63946", "🔴"
+        return "Muy Mala", "#e63946", SVG_ICONS["ALTO"]
     if ica <= 300:
-        return "Extremadamente Mala", "#8e24aa", "🟣"
-    return "Peligrosa", "#5e0035", "☠️"
+        return "Extremadamente Mala", "#8e24aa", SVG_ICONS["EMERGENCIA"]
+    return "Peligrosa", "#5e0035", SVG_ICONS["PELIGROSA"]
 
 
 def recomendaciones_detalladas(
@@ -178,37 +276,37 @@ def recomendaciones_detalladas(
         cubrebocas = {
             "tipo": "N95 obligatorio",
             "color": "#b00020",
-            "icono": "🚨",
-            "detalle": "Toda la población debe usar N95 si sale; "
-                       "considera quedarte en interiores.",
+            "icono": SVG_ICONS["EMERGENCIA"],
+            "detalle": ("Toda la población debe usar N95 si sale; "
+                        "considera quedarte en interiores."),
         }
     elif ica_max > 150:
         cubrebocas = {
             "tipo": "N95 recomendado",
             "color": "#e63946",
-            "icono": "⚠️",
+            "icono": SVG_ICONS["ALTO"],
             "detalle": "N95 al transitar zonas con ICA alto; KN95 mínimo.",
         }
     elif ica_max > 100:
         cubrebocas = {
             "tipo": "KN95 para grupos sensibles",
             "color": "#ff9f1c",
-            "icono": "🟠",
-            "detalle": "Población general: opcional. Asma/alergias/niños/"
-                       "adultos mayores: KN95 al salir.",
+            "icono": SVG_ICONS["MODERADO"],
+            "detalle": ("Población general: opcional. Asma/alergias/niños/"
+                        "adultos mayores: KN95 al salir."),
         }
     elif ica_max > 50:
         cubrebocas = {
             "tipo": "Opcional",
             "color": "#ffd23f",
-            "icono": "🟡",
+            "icono": SVG_ICONS["ACEPTABLE"],
             "detalle": "Solo si presentas irritación o tienes alergias.",
         }
     else:
         cubrebocas = {
             "tipo": "No es necesario",
             "color": "#00b894",
-            "icono": "✅",
+            "icono": SVG_ICONS["BUENA"],
             "detalle": "El aire está limpio.",
         }
 
@@ -234,44 +332,44 @@ def recomendaciones_detalladas(
     # --- Ventilación ---
     if ica_max > 150:
         ventilacion = (
-            "🚪 **Mantén ventanas cerradas.** Usa purificador con filtro HEPA "
+            "**Mantén ventanas cerradas.** Usa purificador con filtro HEPA "
             "si tienes; evita encender ventilador hacia el exterior."
         )
     elif ica_max > 100:
         ventilacion = (
-            "🪟 Ventila solo brevemente y en horas de mejor calidad del aire "
+            "Ventila solo brevemente y en horas de mejor calidad del aire "
             "(madrugada o mediodía con viento)."
         )
     else:
-        ventilacion = "🪟 Puedes ventilar normalmente."
+        ventilacion = "Puedes ventilar normalmente."
 
     # --- Contexto climático: por qué está así, qué esperar ---
     razones = []
     if inversion:
         razones.append(
-            "❄️ **Inversión térmica activa**: el aire frío atrapa los "
+            "**Inversión térmica activa**: el aire frío atrapa los "
             "contaminantes cerca del suelo. Los niveles se mantendrán "
             "altos hasta que suba la temperatura (típicamente al mediodía)."
         )
     if viento_ms < 1.5:
         razones.append(
-            f"🌬️ **Viento muy débil ({viento_ms:.1f} m/s)**: la pluma "
+            f"**Viento muy débil ({viento_ms:.1f} m/s)**: la pluma "
             "no se dispersa bien. Espera que los niveles bajen solo cuando "
             "aumente el viento."
         )
     elif viento_ms >= 5:
         razones.append(
-            f"🌬️ **Viento fuerte ({viento_ms:.1f} m/s)**: buena dispersión, "
+            f"**Viento fuerte ({viento_ms:.1f} m/s)**: buena dispersión, "
             "los niveles deberían mantenerse o mejorar."
         )
     if presion > 1018:
         razones.append(
-            f"🔺 **Alta presión ({presion:.0f} hPa)**: atmósfera estable, "
+            f"**Alta presión ({presion:.0f} hPa)**: atmósfera estable, "
             "menos mezcla vertical. Contribuye a mantener contaminación."
         )
     if temperatura < 10:
         razones.append(
-            f"🥶 **Temperatura baja ({temperatura:.0f}°C)**: favorece "
+            f"**Temperatura baja ({temperatura:.0f}°C)**: favorece "
             "estabilidad nocturna y mayor uso de calefacción."
         )
 
@@ -357,7 +455,8 @@ def factores_ambientales(viento_ms: float, viento_dir: float,
     else:
         imp, msg = "malo", "viento débil: los contaminantes se acumulan"
     out.append({
-        "icono": "💨", "etiqueta": "Viento",
+        "icono": SVG_ICONS["VIENTO"],
+        "etiqueta": "Viento",
         "valor": f"{viento_ms:.1f} m/s desde {_cardinal(viento_dir)}",
         "impacto": imp, "mensaje": msg,
     })
@@ -370,7 +469,8 @@ def factores_ambientales(viento_ms: float, viento_dir: float,
     else:
         imp, msg = "neutro", "presión normal"
     out.append({
-        "icono": "🎚️", "etiqueta": "Presión",
+        "icono": SVG_ICONS["PRESION"],
+        "etiqueta": "Presión",
         "valor": f"{presion:.0f} hPa", "impacto": imp, "mensaje": msg,
     })
 
@@ -382,7 +482,8 @@ def factores_ambientales(viento_ms: float, viento_dir: float,
     else:
         imp, msg = "neutro", "temperatura templada"
     out.append({
-        "icono": "🌡️", "etiqueta": "Temperatura",
+        "icono": SVG_ICONS["TEMPERATURA"],
+        "etiqueta": "Temperatura",
         "valor": f"{temperatura:.1f}°C", "impacto": imp, "mensaje": msg,
     })
 
@@ -398,7 +499,8 @@ def factores_ambientales(viento_ms: float, viento_dir: float,
         if imp == "neutro":
             imp = "malo"
     out.append({
-        "icono": "🚗", "etiqueta": "Tráfico",
+        "icono": SVG_ICONS["TRAFICO"],
+        "etiqueta": "Tráfico",
         "valor": f"perfil {perfil_trafico_pct:.0f}% · {hora:02d}:00",
         "impacto": imp, "mensaje": msg,
     })
@@ -406,13 +508,15 @@ def factores_ambientales(viento_ms: float, viento_dir: float,
     # Inversión térmica (es el factor más crítico cuando ocurre)
     if inversion:
         out.append({
-            "icono": "❄️", "etiqueta": "Inversión térmica",
+            "icono": SVG_ICONS["INVERSION"],
+            "etiqueta": "Inversión térmica",
             "valor": "ACTIVA", "impacto": "crítico",
             "mensaje": "concentra los contaminantes cerca del suelo (×2.2)",
         })
     else:
         out.append({
-            "icono": "✅", "etiqueta": "Mezcla vertical",
+            "icono": SVG_ICONS["MEZCLA"],
+            "etiqueta": "Mezcla vertical",
             "valor": "normal", "impacto": "bueno",
             "mensaje": "los contaminantes se dispersan a las capas superiores",
         })
@@ -428,38 +532,54 @@ def recomendaciones_de_accion(max_ica: float, mean_ica: float,
     derivadas del ICA actual + factores ambientales + pronóstico próximo.
 
     Returns:
-        Lista de strings (cada uno una acción sugerida con su ícono).
+        Lista de strings HTML (cada uno una acción sugerida con su ícono SVG).
     """
     recs: list[str] = []
 
     # Recomendación principal por nivel
     if max_ica > 200:
-        recs.append("🚨 **Permanece en interiores** si es posible. Cierra "
-                    "ventanas y evita ejercicio físico.")
+        recs.append(
+            f"{SVG_ICONS['EMERGENCIA']} <b>Permanece en interiores</b> si es posible. "
+            "Cierra ventanas y evita ejercicio físico."
+        )
     elif max_ica > 150:
-        recs.append("⚠️ **Evita ejercicio al aire libre.** Si vas a salir, "
-                    "usa mascarilla N95.")
+        recs.append(
+            f"{SVG_ICONS['ALTO']} <b>Evita ejercicio al aire libre.</b> "
+            "Si vas a salir, usa mascarilla N95."
+        )
     elif max_ica > 100:
-        recs.append("🟠 **Personas sensibles** (asma, niños, mayores) deben "
-                    "limitar el tiempo en exteriores.")
+        recs.append(
+            f"{SVG_ICONS['MODERADO']} <b>Personas sensibles</b> (asma, niños, mayores) "
+            "deben limitar el tiempo en exteriores."
+        )
     elif max_ica > 50:
-        recs.append("🟡 Calidad aceptable; toma precauciones solo si tienes "
-                    "alergias o sensibilidad respiratoria.")
+        recs.append(
+            f"{SVG_ICONS['ACEPTABLE']} Calidad aceptable; toma precauciones solo si "
+            "tienes alergias o sensibilidad respiratoria."
+        )
     else:
-        recs.append("✅ Aire limpio: puedes realizar actividades al aire libre "
-                    "sin restricciones.")
+        recs.append(
+            f"{SVG_ICONS['BUENA']} Aire limpio: puedes realizar actividades al "
+            "aire libre sin restricciones."
+        )
 
     # Recomendaciones basadas en factores específicos
     factores_malos = [f for f in factores if f["impacto"] in ("malo", "crítico")]
     if any(f["etiqueta"] == "Inversión térmica" for f in factores_malos):
-        recs.append("❄️ La inversión térmica se rompe normalmente al subir "
-                    "la temperatura: espera hasta media mañana para mejor calidad.")
+        recs.append(
+            "<b>Inversión térmica activa:</b> Se rompe al subir la temperatura; "
+            "espera hasta media mañana para mejor calidad."
+        )
     if any(f["etiqueta"] == "Viento" for f in factores_malos):
-        recs.append("💨 El viento débil prolonga la contaminación. Las zonas "
-                    "barlovento (hacia donde NO sopla) son las más afectadas.")
+        recs.append(
+            "<b>Dispersión limitada:</b> El viento débil prolonga la contaminación. "
+            "Las zonas barlovento son las más afectadas."
+        )
     if any(f["etiqueta"] == "Tráfico" for f in factores_malos):
-        recs.append("🚗 Considera transitar por calles secundarias en lugar "
-                    "de avenidas principales si caminas o vas en bicicleta.")
+        recs.append(
+            "<b>Tráfico pesado:</b> Considera transitar por calles secundarias "
+            "en lugar de avenidas principales."
+        )
 
     # Recomendación basada en el pronóstico
     if pico_proximas_horas and pico_proximas_horas.get("hora_pico"):
@@ -467,15 +587,13 @@ def recomendaciones_de_accion(max_ica: float, mean_ica: float,
         ica_pico = pico_proximas_horas["ica_pico"]
         if ica_pico > max_ica + 20:
             recs.append(
-                f"📈 Se prevé un **empeoramiento** hacia las "
-                f"**{hp:02d}:00** (ICA proyectado: {ica_pico:.0f}). "
-                f"Si planeas salir, hazlo antes."
+                f"<b>Empeoramiento previsto</b> hacia las {hp:02d}:00 "
+                f"(ICA proyectado: {ica_pico:.0f}). Si planeas salir, hazlo antes."
             )
         elif ica_pico + 20 < max_ica:
             recs.append(
-                f"📉 La calidad **mejorará** hacia las **{hp:02d}:00** "
-                f"(ICA proyectado: {ica_pico:.0f}). Si puedes posponer la "
-                f"actividad, hazlo."
+                f"<b>Mejora prevista</b> hacia las {hp:02d}:00 "
+                f"(ICA proyectado: {ica_pico:.0f}). Si puedes posponer la actividad, hazlo."
             )
 
     return recs

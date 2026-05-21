@@ -761,23 +761,23 @@ def _render_frame_mpl(ica_matrix, t_segundos, grid, mask, roads,
 # UI: SIDEBAR
 # =====================================================================
 
-st.title(f"🌫️ {PROJECT_NAME} — Simulador de Calidad del Aire — Ciudad Universitaria UANL")
+st.title(f"{PROJECT_NAME} — Simulador de Calidad del Aire — Ciudad Universitaria UANL")
 st.caption(
     "Motor de dispersión advección-difusión 2D · Datos Open-Meteo · "
     "ICA según NOM-172-SEMARNAT-2019 · Equipo 11 · Brigada 003"
 )
 
 # Modos disponibles: identifican claramente qué se está mostrando.
-MODO_AHORA      = "🟢 Tiempo real (ahora)"
-MODO_PRONOSTICO = "🔮 Pronóstico (próximas horas)"
-MODO_ESCENARIO  = "🧪 Escenario hipotético"
+MODO_AHORA      = "Tiempo real (ahora)"
+MODO_PRONOSTICO = "Pronóstico (próximas horas)"
+MODO_ESCENARIO  = "Escenario hipotético"
 
 # Estado global de visualización (persiste entre reruns).
 if "alto_contraste" not in st.session_state:
     st.session_state["alto_contraste"] = False
 
 with st.sidebar:
-    st.header("🎛️ Panel de control")
+    st.header("Panel de control")
 
     # ---- Toggle de alto contraste (siempre arriba y visible) ----
     # Usa key="alto_contraste" para que SU VALOR SE PERSISTA en
@@ -785,7 +785,7 @@ with st.sidebar:
     # botones de la brújula, etc.) NO afecta este toggle: solo se apaga
     # cuando el usuario lo apaga explícitamente.
     st.toggle(
-        "🌑 Modo alto contraste",
+        "Modo alto contraste",
         key="alto_contraste",
         help="Oscurece el mapa y satura los colores: las zonas con "
              "contaminación destacan dramáticamente sobre el fondo, "
@@ -801,11 +801,11 @@ with st.sidebar:
         [MODO_AHORA, MODO_PRONOSTICO, MODO_ESCENARIO],
         index=0,
         help=(
-            "🟢 **Tiempo real**: usa el clima actual y la hora actual "
+            "**Tiempo real**: usa el clima actual y la hora actual "
             "(Open-Meteo).\n\n"
-            "🔮 **Pronóstico**: clima previsto para una hora futura "
+            "**Pronóstico**: clima previsto para una hora futura "
             "(hasta 12 h adelante).\n\n"
-            "🧪 **Escenario**: condiciones manuales para experimentación."
+            "**Escenario**: condiciones manuales para experimentación."
         ),
     )
     es_modo_real = modo == MODO_AHORA
@@ -826,12 +826,12 @@ with st.sidebar:
     if es_modo_real:
         clima = get_current_weather()
         hora_pron_etiqueta = "Ahora"
-        st.markdown("### 🌡️ Condiciones meteorológicas actuales")
+        st.markdown("### Condiciones meteorológicas actuales")
         st.markdown(
-            f"📡 _Fuente: {clima['fuente']}_  \n"
-            f"🌡️ **{clima['temperatura']:.1f} °C**  ·  "
-            f"💧 {clima['humedad']:.0f}% HR  \n"
-            f"🎚️ Presión: **{clima['presion']:.0f} hPa**"
+            f"Fuente: _{clima['fuente']}_  \n"
+            f"Temperatura: **{clima['temperatura']:.1f} °C**  ·  "
+            f"Humedad: {clima['humedad']:.0f}% HR  \n"
+            f"Presión: **{clima['presion']:.0f} hPa**"
         )
         # Brújula visual del viento (en lugar de números crudos)
         mostrar_brujula(
@@ -852,7 +852,7 @@ with st.sidebar:
         # Inversión térmica: heurística automática (T<10°C, viento<2, P>1018)
         inversion = (temperatura < 10 and viento_ms < 2.0 and presion > 1018)
         if inversion:
-            st.warning("❄️ Condiciones de **inversión térmica** detectadas "
+            st.warning("Condiciones de **inversión térmica** detectadas "
                        "automáticamente (T baja, viento débil, presión alta).")
 
     # ----------------------------------------------------------------
@@ -869,11 +869,11 @@ with st.sidebar:
         )
         p = pron[idx_pron]
         hora_pron_etiqueta = p["datetime"].strftime("%a %d %b %H:00")
-        st.markdown("### 🌡️ Clima previsto")
+        st.markdown("### Clima previsto")
         st.markdown(
-            f"⏰ **{hora_pron_etiqueta}**  \n"
-            f"🌡️ **{p['temperatura']:.1f} °C**  \n"
-            f"🎚️ Presión: **{p['presion']:.0f} hPa**"
+            f"Hora: **{hora_pron_etiqueta}**  \n"
+            f"Temperatura: **{p['temperatura']:.1f} °C**  \n"
+            f"Presión: **{p['presion']:.0f} hPa**"
         )
         # Brújula visual del viento previsto
         mostrar_brujula(
@@ -891,17 +891,17 @@ with st.sidebar:
         es_dia_laboral = p["datetime"].weekday() < 5
         inversion = (temperatura < 10 and viento_ms < 2.0 and presion > 1018)
         if inversion:
-            st.warning("❄️ Inversión térmica esperada a esa hora.")
+            st.warning("Inversión térmica esperada a esa hora.")
 
     # ----------------------------------------------------------------
     # MODO 3: ESCENARIO  (todo manual)
     # ----------------------------------------------------------------
     else:
         hora_pron_etiqueta = None
-        with st.expander("🌡️ Meteorología manual", expanded=True):
+        with st.expander("Meteorología manual", expanded=True):
             viento_ms = st.slider("Velocidad del viento (m/s)",
                                   0.5, 12.0, 3.0, 0.1)
-            st.markdown("**🧭 Dirección del viento** (desde dónde sopla):")
+            st.markdown("**Dirección del viento** (desde dónde sopla):")
             # Selector visual con brújula + botones cardinales
             viento_dir = selector_direccion_viento(
                 default_deg=90, key="esc_viento",
@@ -910,7 +910,7 @@ with st.sidebar:
             temperatura = st.slider("Temperatura (°C)", -5, 45, 22)
             presion = st.slider("Presión (hPa)", 990, 1030, 1013)
 
-        with st.expander("🕐 Hora y tráfico", expanded=True):
+        with st.expander("Hora y tráfico", expanded=True):
             hora = st.slider("Hora del día", 0, 23, datetime.now().hour,
                              help="Determina el patrón de tráfico (horas pico).")
             es_dia_laboral = st.checkbox(
@@ -922,26 +922,26 @@ with st.sidebar:
             factor_industrial = st.slider(
                 "Factor industrial (Ternium)", 0.0, 2.0, 1.0, 0.1)
             inversion = st.checkbox(
-                "❄️ Inversión térmica", value=False,
+                "Inversión térmica", value=False,
                 help="Reduce mezcla vertical y concentra contaminantes.")
 
         # Escenarios rápidos solo en modo escenario
-        with st.expander("⚡ Escenarios predefinidos"):
+        with st.expander("Escenarios predefinidos"):
             c1, c2 = st.columns(2)
-            if c1.button("☀️ Día normal", width="stretch"):
+            if c1.button("Día normal", width="stretch"):
                 st.session_state["preset"] = "normal"
-            if c2.button("🚗 Hora pico", width="stretch"):
+            if c2.button("Hora pico", width="stretch"):
                 st.session_state["preset"] = "pico"
-            if c1.button("❄️ Inversión", width="stretch"):
+            if c1.button("Inversión térmica", width="stretch"):
                 st.session_state["preset"] = "inversion"
-            if c2.button("🌬️ Viento Ternium", width="stretch"):
+            if c2.button("Viento hacia Ternium", width="stretch"):
                 st.session_state["preset"] = "ternium"
 
     # ----------------------------------------------------------------
     # AJUSTES COMUNES (red vial, TomTom, visualización)
     # ----------------------------------------------------------------
     st.markdown("---")
-    with st.expander("🚗 Red vial y tráfico", expanded=False):
+    with st.expander("Red vial y tráfico", expanded=False):
         usar_osm = st.checkbox(
             "Usar red vial real (OpenStreetMap)",
             value=True,    # ← ahora ENCENDIDO por defecto
@@ -958,11 +958,11 @@ with st.sidebar:
     # Consultar congestión real (siempre)
     congestion = indice_congestion_zona(tomtom_key)
     if congestion["disponible"]:
-        st.sidebar.success(f"🚦 {congestion['mensaje']}")
+        st.sidebar.success(f"{congestion['mensaje']}")
         factor_congestion = congestion["multiplicador_emision"]
     else:
         if tomtom_key:
-            st.sidebar.warning(f"🚦 {congestion['mensaje']}")
+            st.sidebar.warning(f"{congestion['mensaje']}")
         factor_congestion = 1.0
 
 
@@ -990,7 +990,7 @@ if preset:
 factor_trafico_efectivo = factor_trafico * factor_congestion
 if factor_congestion > 1.01:
     st.sidebar.caption(
-        f"⚙️ Factor de tráfico efectivo: {factor_trafico:.2f} × "
+        f"Factor de tráfico efectivo: {factor_trafico:.2f} × "
         f"{factor_congestion:.2f} = **{factor_trafico_efectivo:.2f}**"
     )
 
@@ -1077,8 +1077,8 @@ st.markdown(
                 border-radius:10px; color:#1a1a1a; margin-bottom:10px;
                 border: 2px solid rgba(0,0,0,0.35);">
         <div style="display:flex; justify-content:space-between; align-items:baseline;">
-          <div style="font-size:22px; font-weight:800;">
-              {alert['icono']} {alert['nivel']} · ICA medio {ica_med_val:.0f} ({cat_med})
+          <div style="font-size:22px; font-weight:800; display:flex; align-items:center; gap:8px;">
+              {alert['icono']} {alert['nivel']} &nbsp;·&nbsp; ICA medio {ica_med_val:.0f} ({cat_med})
           </div>
           <div style="font-size:14px; opacity:0.85;">
               máx {ica_max_val:.0f} · p95 {ica_p95_val:.0f}
@@ -1143,10 +1143,10 @@ acciones = recomendaciones_de_accion(
 )
 
 # Mostrar acciones recomendadas
-st.markdown("##### 🎯 Qué hacer ahora")
+st.markdown("##### Qué hacer ahora")
 for a in acciones:
-    st.markdown(f"- {a}")
-st.markdown(f"- 😷 **Cubrebocas**: {mask_recommendation(ica_max_val)}")
+    st.markdown(f"{a}", unsafe_allow_html=True)
+st.markdown(f"**Cubrebocas**: {mask_recommendation(ica_max_val)}", unsafe_allow_html=True)
 
 
 # ----------------------------------------------------------------
@@ -1155,7 +1155,7 @@ st.markdown(f"- 😷 **Cubrebocas**: {mask_recommendation(ica_max_val)}")
 col_fac, col_pron = st.columns([3, 2])
 
 with col_fac:
-    st.markdown("##### 🧭 Por qué el aire está así")
+    st.markdown("##### Por qué el aire está así")
     _color_imp = {
         "bueno":   "#1a9850",
         "neutro":  "#777",
@@ -1168,8 +1168,8 @@ with col_fac:
             f"""
             <div style="border-left: 4px solid {c}; padding: 6px 10px;
                         margin-bottom: 6px; background: rgba(0,0,0,0.025);">
-              <span style="font-size: 14px;">
-                {f['icono']} <b>{f['etiqueta']}</b>:
+              <span style="font-size: 14px; display:flex; align-items:center;">
+                {f['icono']} <b>{f['etiqueta']}</b>:&nbsp;
                 <span style="color:{c};"><b>{f['valor']}</b></span>
               </span>
               <div style="font-size: 12px; color: #555; margin-top: 2px;">
@@ -1182,7 +1182,7 @@ with col_fac:
 
 with col_pron:
     if forecast_ica:
-        st.markdown("##### 🔮 Próximas horas")
+        st.markdown("##### Próximas horas")
         for f in forecast_ica:
             cat_f, color_f = categoria_ica(f["ica_max"])
             etiqueta = f["datetime"].strftime("%H:00")
@@ -1205,10 +1205,10 @@ with col_pron:
                 unsafe_allow_html=True,
             )
     elif es_modo_escenario:
-        st.markdown("##### 🔮 Próximas horas")
-        st.caption("_Disponible en modos **Tiempo real** y **Pronóstico**._")
+        st.markdown("##### Próximas horas")
+        st.caption("_Disponible en modos Tiempo real y Pronóstico._")
     else:
-        st.markdown("##### 🔮 Próximas horas")
+        st.markdown("##### Próximas horas")
         st.caption("_No hay datos de pronóstico disponibles._")
 
 
@@ -1216,7 +1216,7 @@ with col_pron:
 # METRICAS DETALLADAS
 # =====================================================================
 
-with st.expander("📊 Métricas detalladas de la simulación actual"):
+with st.expander("Métricas detalladas de la simulación actual"):
     cat_max, _ = categoria_ica(ica_max_val)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("ICA máximo", f"{ica_max_val:.0f}", cat_max)
@@ -1232,10 +1232,10 @@ with st.expander("📊 Métricas detalladas de la simulación actual"):
 
 (tab_mapa, tab_animacion, tab_evolucion, tab_pronostico,
  tab_rutas, tab_validacion, tab_info) = st.tabs(
-    ["🗺️ Estado actual", "🎬 Cómo se mueve",
-     "📅 Día completo (24h)", "🔮 Próximas 12 horas",
-     "🚶 Rutas seguras", "📊 Validación SIMA",
-     "ℹ️ Sobre el modelo"]
+    ["Mapa actual", "Cómo se mueve",
+     "Día completo (24h)", "Próximas 12 horas",
+     "Rutas seguras", "Validación SIMA",
+     "Sobre el modelo"]
 )
 
 # ----- TAB 1: MAPA -----
@@ -1249,8 +1249,8 @@ with tab_mapa:
     st.markdown(
         """
         **Leyenda ICA**:  
-        🟩 0-50 Buena · 🟨 51-100 Aceptable · 🟧 101-150 Mala ·
-        🟥 151-200 Muy Mala · 🟪 201-300 Extr. Mala · ⬛ 301+ Peligrosa
+        0-50 Buena (verde) · 51-100 Aceptable (amarillo) · 101-150 Mala (naranja) ·
+        151-200 Muy Mala (rojo) · 201-300 Extr. Mala (violeta) · 301+ Peligrosa (negro)
         """
     )
 
@@ -1277,7 +1277,7 @@ with tab_animacion:
                     padding: 10px 16px; border-radius: 6px;
                     margin-bottom: 16px;">
           <div style="font-size: 15px; font-weight: 700; color: #6c5ce7;">
-              🎬 ILUSTRATIVO · transitorio físico
+              ILUSTRATIVO · transitorio físico
           </div>
           <div style="font-size: 13px; color: #444;">
               Parte de aire limpio y muestra cómo se construye y mueve la
@@ -1341,7 +1341,7 @@ with tab_animacion:
         inversion, es_dia_laboral, usar_osm, duracion_anim, n_frames_anim,
     )
 
-    generar = st.button("⚙️ Generar / actualizar animación", width="stretch",
+    generar = st.button("Generar / actualizar animación", width="stretch",
                         type="primary")
 
     if generar:
@@ -1359,13 +1359,13 @@ with tab_animacion:
         barra.empty()
         st.session_state["anim_frames_png"] = pngs
         st.session_state["anim_key"] = anim_key
-        st.success(f"✅ {n_fr} frames listos. Reproducción fluida activada.")
+        st.success(f"{n_fr} frames listos. Reproducción fluida activada.")
 
     frames_png = st.session_state.get("anim_frames_png")
     key_guardada = st.session_state.get("anim_key")
 
     if frames_png is None:
-        st.info("⬆️ Presiona **Generar animación** para pre-renderizar los "
+        st.info("Presiona **Generar animación** para pre-renderizar los "
                 "frames. Una vez listos, podrás reproducirlos sin parpadeo.")
     else:
         desactualizada = (key_guardada != anim_key)
@@ -1468,7 +1468,7 @@ with tab_evolucion:
                     padding: 10px 16px; border-radius: 6px;
                     margin-bottom: 16px;">
           <div style="font-size: 15px; font-weight: 700; color: #a8551a;">
-              🧪 EXPLORATORIO · día tipo (24h)
+              EXPLORATORIO · día tipo (24h)
           </div>
           <div style="font-size: 13px; color: #444;">
               Simula un día completo bajo las condiciones meteorológicas
@@ -1520,7 +1520,7 @@ with tab_evolucion:
 
     # Slider de hora para ver el frame
     hora_view = st.slider(
-        "🕐 Hora del día para visualizar",
+        "Hora del día para visualizar",
         0, 23, 8,
         help="Mueve el slider para ver cómo cambia el mapa de contaminación "
              "a lo largo del día.",
@@ -1598,7 +1598,7 @@ with tab_evolucion:
     ica_min_h = int(df_evol["ica_max"].idxmin())
     delta = df_evol.loc[hora_pico_ica, "ica_max"] - df_evol.loc[ica_min_h, "ica_max"]
     st.info(
-        f"💡 **Análisis del día**:  el ICA máximo se alcanza a las "
+        f"**Análisis del día**: el ICA máximo se alcanza a las "
         f"**{hora_pico_ica:02d}:00** (ICA={df_evol.loc[hora_pico_ica, 'ica_max']:.0f}), "
         f"un aumento de **+{delta:.0f}** puntos respecto al mínimo de las "
         f"{ica_min_h:02d}:00. El flujo vehicular es el principal motor de "
@@ -1615,7 +1615,7 @@ with tab_pronostico:
                     padding: 10px 16px; border-radius: 6px;
                     margin-bottom: 16px;">
           <div style="font-size: 15px; font-weight: 700; color: #1c5b9f;">
-              🔮 PREDICCIÓN · próximas 12 horas
+              PREDICCIÓN · próximas 12 horas
           </div>
           <div style="font-size: 13px; color: #444;">
               Combina el pronóstico meteorológico de Open-Meteo con el modelo
@@ -1693,7 +1693,7 @@ with tab_pronostico:
         st.plotly_chart(fig, width="stretch")
 
         # --- Timeline de recomendaciones por hora ---
-        st.markdown("##### 📋 Qué hacer hora por hora")
+        st.markdown("##### Qué hacer hora por hora")
         recs_pron = recomendaciones_pronostico(forecast, umbral=100.0)
 
         # Mostrar como tabla con estilo + emojis para acciones
@@ -1725,7 +1725,7 @@ with tab_pronostico:
 
         # Picos resaltados
         if picos:
-            st.markdown("##### ⚠️ Ventanas críticas detectadas")
+            st.markdown("##### Ventanas críticas detectadas")
             df_picos = pd.DataFrame([{
                 "Hora": p["datetime"].strftime("%a %d %b · %H:%M"),
                 "ICA máximo previsto": f"{p['ica_max']:.0f}",
@@ -1736,13 +1736,13 @@ with tab_pronostico:
             } for p in picos])
             st.dataframe(df_picos, hide_index=True, width="stretch")
         else:
-            st.success("✅ No se proyectan episodios de contaminación elevada "
+            st.success("No se proyectan episodios de contaminación elevada "
                        "en las próximas 12 horas.")
     else:
-        st.info("📌 El pronóstico horario se construye sobre las condiciones "
+        st.info("El pronóstico horario se construye sobre las condiciones "
                 "previstas por Open-Meteo, así que solo está disponible en los "
-                "modos **🟢 Tiempo real** y **🔮 Pronóstico**. En modo "
-                "**🧪 Escenario hipotético** el clima es fijo y no hay serie "
+                "modos **Tiempo real** y **Pronóstico**. En modo "
+                "**Escenario hipotético** el clima es fijo y no hay serie "
                 "temporal que proyectar. Cambia el modo en el panel lateral.")
 
 # ----- TAB 3: RUTAS -----
@@ -1753,13 +1753,13 @@ with tab_rutas:
 
     cr1, cr2 = st.columns(2)
     with cr1:
-        st.markdown("**📍 Punto de partida**")
+        st.markdown("**Punto de partida**")
         lat_o = st.number_input("Latitud (origen)", value=25.7212,
                                 step=0.0005, format="%.4f")
         lon_o = st.number_input("Longitud (origen)", value=-100.3138,
                                 step=0.0005, format="%.4f")
     with cr2:
-        st.markdown("**🎯 Destino**")
+        st.markdown("**Destino**")
         lat_d = st.number_input("Latitud (destino)", value=25.7298,
                                 step=0.0005, format="%.4f")
         lon_d = st.number_input("Longitud (destino)", value=-100.3045,
@@ -1770,7 +1770,7 @@ with tab_rutas:
         0.0, 1.0, 0.7, 0.05,
     )
 
-    if st.button("🔍 Calcular ruta"):
+    if st.button("Calcular ruta"):
         idx_o = coords_to_index(lat_o, lon_o, grid)
         idx_d = coords_to_index(lat_d, lon_d, grid)
 
@@ -1793,15 +1793,15 @@ with tab_rutas:
 
                 ccol1, ccol2 = st.columns(2)
                 with ccol1:
-                    st.markdown("##### 🔴 Ruta más corta")
+                    st.markdown("##### Ruta más corta")
                     st.metric("Distancia", f"{stats_corta['longitud_m']:.0f} m")
                     st.metric("ICA medio en ruta",
                               f"{stats_corta['ica_medio']:.0f}")
                     st.metric("ICA máximo expuesto",
                               f"{stats_corta['ica_max']:.0f}")
-                    st.caption(mask_recommendation(stats_corta["ica_max"]))
+                    st.markdown(mask_recommendation(stats_corta["ica_max"]), unsafe_allow_html=True)
                 with ccol2:
-                    st.markdown("##### 🟢 Ruta de menor exposición")
+                    st.markdown("##### Ruta de menor exposición")
                     st.metric("Distancia", f"{stats_limpia['longitud_m']:.0f} m",
                               delta=f"{stats_limpia['longitud_m'] - stats_corta['longitud_m']:+.0f} m")
                     st.metric("ICA medio en ruta",
@@ -1812,13 +1812,13 @@ with tab_rutas:
                               f"{stats_limpia['ica_max']:.0f}",
                               delta=f"{stats_limpia['ica_max'] - stats_corta['ica_max']:+.0f}",
                               delta_color="inverse")
-                    st.caption(mask_recommendation(stats_limpia["ica_max"]))
+                    st.markdown(mask_recommendation(stats_limpia["ica_max"]), unsafe_allow_html=True)
 
                 reduccion = 100 * (1 - stats_limpia["ica_medio"] /
                                    max(stats_corta["ica_medio"], 0.01))
                 if reduccion > 5:
                     st.success(
-                        f"💡 La ruta alternativa reduce tu exposición media en "
+                        f"La ruta alternativa reduce tu exposición media en "
                         f"**{reduccion:.0f}%** a costa de **"
                         f"{stats_limpia['longitud_m'] - stats_corta['longitud_m']:+.0f} m** "
                         f"adicionales."
@@ -1865,7 +1865,7 @@ with tab_validacion:
         if archivo is not None:
             try:
                 df_sima = cargar_datos_sima(archivo, contaminante)
-                st.success(f"✅ {len(df_sima)} observaciones cargadas.")
+                st.success(f"{len(df_sima)} observaciones cargadas.")
             except Exception as e:
                 st.error(f"No se pudo leer el CSV: {e}")
     else:
@@ -1929,7 +1929,7 @@ with tab_validacion:
             v3.metric("Correlación", f"{m['correlacion']:.3f}")
             v4.metric("Índice de concordancia", f"{m['ioa']:.3f}")
 
-            st.info(f"📋 **Interpretación**: {resultado['interpretacion']}")
+            st.info(f"**Interpretación**: {resultado['interpretacion']}")
 
             # Gráfico observado vs simulado
             fig_val = go.Figure()
@@ -1952,7 +1952,7 @@ with tab_validacion:
             st.plotly_chart(fig_val, width="stretch")
 
             st.caption(
-                "⚠️ Nota metodológica: las estaciones del SIMA están fuera "
+                "Nota metodológica: las estaciones del SIMA están fuera "
                 "del polígono de CU, por lo que esta comparación valida la "
                 "**forma del ciclo diario** y el orden de magnitud, no el "
                 "valor absoluto puntual. Para validación rigurosa se "

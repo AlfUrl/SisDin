@@ -1328,7 +1328,7 @@ with st.expander("**Métricas detalladas de la simulación actual**", expanded=T
 
 (tab_mapa, tab_animacion, tab_evolucion, tab_pronostico,
  tab_rutas, tab_validacion, tab_info) = st.tabs(
-    ["Mapa actual", "Cómo se mueve",
+    ["Mapa actual", "Tendencia",
      "Día completo (24h)", "Próximas 12 horas",
      "Rutas seguras", "Validación SIMA",
      "Sobre el modelo"]
@@ -1459,9 +1459,10 @@ with tab_animacion:
                  "pre-renderizar).",
         )
     with col_an3:
-        hora_anim = st.slider("Hora a simular", 0, 23, hora,
-                              key="hora_anim",
-                              help="Determina el nivel de tráfico de partida.")
+        hora_anim_val = st.slider("Hora a simular", 0, 23, hora,
+                                  disabled=not es_modo_escenario,
+                                  help="Determina el nivel de tráfico de partida." if es_modo_escenario else "Solo disponible en el modo Escenario hipotético")
+        hora_anim = hora_anim_val if es_modo_escenario else hora
 
     anim = simular_animacion_cached(
         hora=hora_anim, contaminante=contaminante,

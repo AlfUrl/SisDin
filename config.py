@@ -3,7 +3,7 @@
 # =====================================================================
 
 # Nombre del proyecto
-PROJECT_NAME = "AirSim"
+PROJECT_NAME = "SimulAir"
 
 # Subtítulo o descripción corta del proyecto
 PROJECT_SUBTITLE = "Simulador de Calidad del Aire - UANL"

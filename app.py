@@ -1374,8 +1374,8 @@ if not es_modo_escenario:
 
         st.caption(
             f"Datos de **CAMS** vía Open-Meteo (modelo global ~45 km, "
-            f"actualizado cada 12 h). Para comparar con mediciones reales "
-            f"en estación física, ve al tab **Validación SIMA** y usa "
+            f"actualizado cada 12 h). Para comparar con otas fuentes"
+            f"de datos, ve al tab **Validación SIMA** y usa "
             f"un CSV descargado de SINAICA."
         )
     elif not med["ok"]:
@@ -1495,12 +1495,11 @@ with tab_animacion:
         """,
         unsafe_allow_html=True,
     )
-    st.markdown("#### Movimiento de la pluma de contaminación en tiempo casi real")
+    st.markdown("#### Movimiento de la pluma de contaminación")
     st.caption(
         "La simulación parte de aire limpio y muestra cómo se emite el "
         "contaminante desde las vialidades y la industria, y cómo el viento "
-        "lo transporta y dispersa. Los frames se pre-renderizan al presionar "
-        "el botón; después la reproducción es fluida (sin parpadeo)."
+        "lo transporta y dispersa."
     )
 
     col_an1, col_an2, col_an3 = st.columns(3)
@@ -2058,7 +2057,7 @@ with tab_validacion:
 
     fuente_sima = st.radio(
         "Fuente de datos de observación",
-        ["Datos de OpenMeteo", "Subir CSV del SIMA (Anaisis Prveio o Actual)"],
+        ["Datos de OpenMeteo", "Subir CSV del SIMA (Anaisis Previo o Actual)"],
         horizontal=True,
     )
 
@@ -2180,7 +2179,6 @@ with tab_validacion:
                 })
                 st.dataframe(df_comp, hide_index=True, width="stretch")
 
-
 # ----- TAB 4: INFO -----
 with tab_info:
     st.markdown(
@@ -2195,8 +2193,8 @@ with tab_info:
         Se resuelve la **ecuación de advección–difusión 2D** sobre una rejilla
         regular de **15 m × 15 m**:
 
-        $$\\frac{\\partial C}{\\partial t} = -u\\frac{\\partial C}{\\partial x}
-        - v\\frac{\\partial C}{\\partial y} + D\\,\\nabla^2 C + S(x,y) - k\\,C$$
+        $$\frac{\partial C}{\partial t} = -u\frac{\partial C}{\partial x}
+        - v\frac{\partial C}{\partial y} + D\,\nabla^2 C + S(x,y) - k\,C$$
 
         donde:
         - $C$ = concentración del contaminante (μg/m³)
@@ -2228,9 +2226,9 @@ with tab_info:
         #### 🚗 Modelo de flujo vehicular
         Para cada celda de 15 × 15 m por la que pasa una vialidad:
 
-        $$E_{\\text{celda}} \\;\\left[\\frac{\\mu g}{m^3 \\cdot s}\\right] =
-        \\frac{Q\\;\\text{[veh/h]} \\cdot FE\\;[g/km] \\cdot \\Delta x\\;[km]
-        \\cdot 10^6}{3600 \\cdot \\Delta x^2 \\cdot H_{mix}}$$
+        $$E_{\text{celda}} \;\left[\frac{\mu g}{m^3 \cdot s}\right] =
+        \frac{Q\;\text{[veh/h]} \cdot FE\;[g/km] \cdot \Delta x\;[km]
+        \cdot 10^6}{3600 \cdot \Delta x^2 \cdot H_{mix}}$$
 
         donde $Q$ varía hora a hora con el perfil:
         - 3 AM:   2 % de la capacidad
@@ -2260,7 +2258,7 @@ with tab_info:
         observaciones del **Sistema Integral de Monitoreo Ambiental** de
         Nuevo León, calculando RMSE, sesgo, correlación de Pearson e índice
         de concordancia de Willmott. Acepta un CSV exportado del portal SIMA
-        o un conjunto sintético de demostración.
+        o un conjunto de datos de OpenMeteo.
 
         #### ⚠️ Limitaciones reconocidas
         - Modelo 2D: no resuelve gradiente vertical (capa de mezcla simulada

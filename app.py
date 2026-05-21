@@ -451,11 +451,7 @@ def selector_direccion_viento(default_deg: int = 90, key: str = "viento_dir",
                     st.rerun()
 
     with st.expander("Ajuste por grados"):
-        fino = st.slider("Dirección", 0, 359, direccion,
-                         key=f"{key}_fino_slider")
-        if fino != direccion:
-            st.session_state[state_key] = fino
-            st.rerun()
+        st.slider("Dirección", 0, 359, key=state_key)
 
     return int(st.session_state[state_key])
 
@@ -1004,42 +1000,49 @@ with st.sidebar:
         hora_pron_etiqueta = None
         with st.expander("Meteorología manual", expanded=True):
             viento_ms = st.slider("Velocidad del viento (m/s)",
-                                  0.5, 12.0, 3.0, 0.1)
+                                  0.5, 12.0, 3.0, 0.1, key="esc_viento_ms")
             st.markdown("**Dirección del viento** (desde dónde sopla):")
             # Selector visual con brújula + botones cardinales
             viento_dir = selector_direccion_viento(
                 default_deg=90, key="esc_viento",
                 alto_contraste=st.session_state["alto_contraste"],
             )
-            temperatura = st.slider("Temperatura (°C)", -5, 45, 22)
-            presion = st.slider("Presión (hPa)", 990, 1030, 1013)
+            temperatura = st.slider("Temperatura (°C)", -5, 45, 22, key="esc_temp")
+            presion = st.slider("Presión (hPa)", 990, 1030, 1013, key="esc_presion")
 
         with st.expander("Hora y tráfico", expanded=True):
             hora = st.slider("Hora del día", 0, 23, datetime.now().hour,
-                             help="Determina el patrón de tráfico (horas pico).")
+                             help="Determina el patrón de tráfico (horas pico).", key="esc_hora")
             es_dia_laboral = st.checkbox(
                 "Día laboral (lun-vie)", value=True,
-                help="Fines de semana: flujo vehicular ~40% menor.")
+                help="Fines de semana: flujo vehicular ~40% menor.", key="esc_dia_laboral")
             factor_trafico = st.slider(
                 "Factor de tráfico", 0.0, 2.0, 1.0, 0.1,
-                help="1.0 = normal. 0.7 = -30% (hoy no circula). 1.5 = +50%.")
+                help="1.0 = normal. 0.7 = -30% (hoy no circula). 1.5 = +50%.", key="esc_f_trafico")
             factor_industrial = st.slider(
-                "Factor industrial (Ternium)", 0.0, 2.0, 1.0, 0.1)
+                "Factor industrial (Ternium)", 0.0, 2.0, 1.0, 0.1, key="esc_f_ind")
             inversion = st.checkbox(
                 "Inversión térmica", value=False,
-                help="Reduce mezcla vertical y concentra contaminantes.")
+                help="Reduce mezcla vertical y concentra contaminantes.", key="esc_inv")
+
+        def set_preset(preset_name):
+            if preset_name == "normal":
+                st.session_state.update({"esc_hora": 14, "esc_viento_ms": 4.0, "esc_viento_dir_state": 90, "esc_temp": 25, "esc_presion": 1013, "esc_f_trafico": 1.0, "esc_f_ind": 1.0, "esc_inv": False})
+            elif preset_name == "pico":
+                st.session_state.update({"esc_hora": 8, "esc_viento_ms": 2.0, "esc_viento_dir_state": 90, "esc_temp": 18, "esc_presion": 1015, "esc_f_trafico": 1.3, "esc_f_ind": 1.0, "esc_inv": False})
+            elif preset_name == "inversion":
+                st.session_state.update({"esc_hora": 7, "esc_viento_ms": 1.2, "esc_viento_dir_state": 0, "esc_temp": 4, "esc_presion": 1022, "esc_f_trafico": 1.0, "esc_f_ind": 1.0, "esc_inv": True})
+            elif preset_name == "ternium":
+                st.session_state.update({"esc_hora": 12, "esc_viento_ms": 4.0, "esc_viento_dir_state": 45, "esc_temp": 22, "esc_presion": 1013, "esc_f_trafico": 1.0, "esc_f_ind": 1.7, "esc_inv": False})
+            st.session_state["last_preset"] = preset_name
 
         # Escenarios rápidos solo en modo escenario
         with st.expander("Escenarios predefinidos"):
             c1, c2 = st.columns(2)
-            if c1.button("Día normal", width="stretch"):
-                st.session_state["preset"] = "normal"
-            if c2.button("Hora pico", width="stretch"):
-                st.session_state["preset"] = "pico"
-            if c1.button("Inversión térmica", width="stretch"):
-                st.session_state["preset"] = "inversion"
-            if c2.button("Viento hacia Ternium", width="stretch"):
-                st.session_state["preset"] = "ternium"
+            c1.button("Día normal", width="stretch", on_click=set_preset, args=("normal",))
+            c2.button("Hora pico", width="stretch", on_click=set_preset, args=("pico",))
+            c1.button("Inversión térmica", width="stretch", on_click=set_preset, args=("inversion",))
+            c2.button("Viento hacia Ternium", width="stretch", on_click=set_preset, args=("ternium",))
 
     # ----------------------------------------------------------------
     # AJUSTES COMUNES (red vial, TomTom, visualización)
@@ -1071,23 +1074,11 @@ with st.sidebar:
 
 
 # ----------------------------------------------------------------
-# Aplicar preset (solo en modo escenario)
+# Mostrar mensaje si se acaba de aplicar un preset
 # ----------------------------------------------------------------
-preset = st.session_state.get("preset", None) if es_modo_escenario else None
-if preset == "normal":
-    hora, viento_ms, viento_dir, temperatura, presion = 14, 4, 90, 25, 1013
-    factor_trafico, factor_industrial, inversion = 1.0, 1.0, False
-elif preset == "pico":
-    hora, viento_ms, viento_dir, temperatura, presion = 8, 2, 90, 18, 1015
-    factor_trafico, factor_industrial, inversion = 1.3, 1.0, False
-elif preset == "inversion":
-    hora, viento_ms, viento_dir, temperatura, presion = 7, 1.2, 0, 4, 1022
-    factor_trafico, factor_industrial, inversion = 1.0, 1.0, True
-elif preset == "ternium":
-    hora, viento_ms, viento_dir, temperatura, presion = 12, 4, 45, 22, 1013
-    factor_trafico, factor_industrial, inversion = 1.0, 1.7, False
-if preset:
-    st.sidebar.success(f"Preset aplicado: **{preset}**.")
+last_preset = st.session_state.pop("last_preset", None)
+if last_preset:
+    st.sidebar.success(f"Preset aplicado: **{last_preset}**.")
 
 
 # Factor de tráfico efectivo = control manual × congestión real (TomTom)

@@ -915,7 +915,7 @@ with st.sidebar:
     # ---- Contaminante (común a todos los modos) ----
     contaminante = st.selectbox(
         "Contaminante",
-        ["PM2.5", "PM10", "NOx", "SO2"],
+        ["PM2.5 (Material Particulado fino)", "PM10 (Material Particulado respirable)", "NOx (Óxidos de Nitrógeno)", "SO2 (Dióxido de Azufre)"],
         help="Cada contaminante usa sus factores de emisión y cortes ICA "
              "según norma mexicana.",
     )
@@ -2182,7 +2182,7 @@ with tab_validacion:
 # ----- TAB 4: INFO -----
 with tab_info:
     st.markdown(
-        """
+        r"""
         ### Acerca del modelo
 
         Esta simulación implementa la **propuesta del Equipo 11 — Brigada 003**

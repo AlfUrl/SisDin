@@ -7,6 +7,9 @@ Implementa el modelo descrito en la propuesta:
 - Fuente fija (planta Ternium)
 - Modelo de advección-difusión 2D con esquema upwind explícito
 - Modulación por velocidad/dirección del viento, temperatura, presión
+- Fricción diferencial por uso de suelo (landuse.py): zonas arboladas,
+  edificios, zonas abiertas, agua e industrial modifican D y velocidad
+  efectiva celda a celda, basándose en datos OSM con respaldo hardcodeado.
 - Cálculo de ICA según NOM-172-SEMARNAT-2019 (puntos de corte simplificados)
 
 Equipo 11 - Brigada 003 - Modelado y Simulación de Sistemas Dinámicos
@@ -256,18 +259,22 @@ def wind_to_uv(speed_ms, direction_deg):
 
 def _setup_dispersion(grid, emisiones, wind_speed_ms, wind_direction_deg,
                       temperatura_c, presion_hpa, tiempo_simulado_s,
-                      inversion_termica):
+                      inversion_termica, landuse_map=None):
     """
     Calcula todos los parámetros del esquema numérico.
 
+    Si se pasa `landuse_map`, construye matrices 2-D de D, u y v
+    usando landuse.build_wind_maps (fricción diferencial por celda).
+
     Returns:
-        dict con dx, u, v, D, S_scaled, k_decay, dt_safe, n_steps.
+        dict con dx, u, v, D (escalares base), D_map/u_map/v_map
+        (matrices o None), S_scaled, k_decay, dt_safe, n_steps.
     """
     dx = float(grid["cell_size_m"])
     u, v = wind_to_uv(wind_speed_ms, wind_direction_deg)
 
-    # Coeficiente de difusión turbulenta efectiva (m²/s): D ≈ c·|U|·L.
-    D = 0.30 * max(wind_speed_ms, 0.3) * dx
+    # Coeficiente de difusión turbulenta base (m²/s): D ≈ c·|U|·L.
+    D_base = 0.30 * max(wind_speed_ms, 0.3) * dx
 
     # Modulación por presión y temperatura.
     factor_presion = np.clip((presion_hpa - 1000.0) / 25.0, -0.5, 1.5)
@@ -275,13 +282,29 @@ def _setup_dispersion(grid, emisiones, wind_speed_ms, wind_direction_deg,
     factor_concentracion = 1.0 + 0.6 * factor_presion + 0.5 * factor_temp
     factor_concentracion = float(np.clip(factor_concentracion, 0.5, 3.0))
 
+    D = D_base
     if inversion_termica:
         factor_concentracion *= 2.2
         D *= 0.30  # mezcla turbulenta severamente reducida
+        D_base = D  # las matrices se escalan a partir del D ya corregido
+
+    # -- Mapas espaciales de D, u, v por uso de suelo --
+    if landuse_map is not None:
+        from landuse import build_wind_maps  # importación local para evitar circular
+        D_map, u_map, v_map = build_wind_maps(grid, landuse_map, D_base, u, v)
+        # CFL usando el máximo de velocidad y difusión en toda la malla
+        u_max = float(np.abs(u_map).max()) + 1e-6
+        v_max = float(np.abs(v_map).max()) + 1e-6
+        D_max = float(D_map.max()) + 1e-6
+    else:
+        D_map = u_map = v_map = None
+        u_max = abs(u) + 1e-6
+        v_max = abs(v) + 1e-6
+        D_max = D + 1e-6
 
     # Estabilidad CFL (factor de seguridad 0.4).
-    dt_adv = dx / (abs(u) + abs(v) + 1e-6)
-    dt_dif = dx * dx / (4.0 * D + 1e-6)
+    dt_adv = dx / (u_max + v_max)
+    dt_dif = dx * dx / (4.0 * D_max)
     dt_safe = max(min(0.4 * dt_adv, 0.4 * dt_dif), 0.05)
     n_steps = max(1, int(np.ceil(tiempo_simulado_s / dt_safe)))
 
@@ -292,33 +315,51 @@ def _setup_dispersion(grid, emisiones, wind_speed_ms, wind_direction_deg,
 
     return {
         "dx": dx, "u": u, "v": v, "D": D,
+        "D_map": D_map, "u_map": u_map, "v_map": v_map,
         "S_scaled": emisiones * factor_concentracion,
         "k_decay": k_decay, "dt_safe": dt_safe, "n_steps": n_steps,
     }
 
 
 def _dispersion_step(C, p):
-    """Avanza un paso temporal del esquema advección-difusión."""
-    dx, u, v, D = p["dx"], p["u"], p["v"], p["D"]
+    """
+    Avanza un paso temporal del esquema advección-difusión.
+
+    Si p contiene D_map/u_map/v_map (matrices 2-D) las usa celda a celda;
+    de lo contrario usa los escalares D, u, v (compatibilidad hacia atrás).
+    """
+    dx = p["dx"]
     # Frontera abierta: aire entrante trae C=0 (aire limpio regional).
     Cp = np.pad(C, 1, mode="constant", constant_values=0.0)
 
-    # Advección upwind por componente
-    if u >= 0:
-        dCdx = (Cp[1:-1, 1:-1] - Cp[1:-1, :-2]) / dx
+    # --- Advección upwind (u y v pueden ser escalares o matrices) ---
+    if p["u_map"] is not None:
+        u_map = p["u_map"]
+        v_map = p["v_map"]
+        # Upwind vectorizado: elige diferencia backward/forward según signo
+        dCdx = np.where(
+            u_map >= 0,
+            (Cp[1:-1, 1:-1] - Cp[1:-1, :-2]) / dx,
+            (Cp[1:-1, 2:]   - Cp[1:-1, 1:-1]) / dx,
+        )
+        dCdy = np.where(
+            v_map >= 0,
+            (Cp[1:-1, 1:-1] - Cp[:-2, 1:-1]) / dx,
+            (Cp[2:,   1:-1] - Cp[1:-1, 1:-1]) / dx,
+        )
+        adv = -u_map * dCdx - v_map * dCdy
     else:
-        dCdx = (Cp[1:-1, 2:] - Cp[1:-1, 1:-1]) / dx
-    if v >= 0:
-        dCdy = (Cp[1:-1, 1:-1] - Cp[:-2, 1:-1]) / dx
-    else:
-        dCdy = (Cp[2:, 1:-1] - Cp[1:-1, 1:-1]) / dx
-    adv = -u * dCdx - v * dCdy
+        u, v = p["u"], p["v"]
+        dCdx = (Cp[1:-1, 1:-1] - Cp[1:-1, :-2]) / dx if u >= 0 else (Cp[1:-1, 2:] - Cp[1:-1, 1:-1]) / dx
+        dCdy = (Cp[1:-1, 1:-1] - Cp[:-2, 1:-1]) / dx if v >= 0 else (Cp[2:, 1:-1] - Cp[1:-1, 1:-1]) / dx
+        adv = -u * dCdx - v * dCdy
 
-    # Difusión: laplaciano de 5 puntos
+    # --- Difusión: laplaciano de 5 puntos (D puede ser escalar o matriz) ---
     lap = (Cp[1:-1, :-2] + Cp[1:-1, 2:] +
            Cp[:-2, 1:-1] + Cp[2:, 1:-1] -
            4.0 * Cp[1:-1, 1:-1]) / (dx * dx)
-    diff = D * lap
+    D_eff = p["D_map"] if p["D_map"] is not None else p["D"]
+    diff = D_eff * lap
 
     C = C + p["dt_safe"] * (adv + diff + p["S_scaled"] - p["k_decay"] * C)
     np.maximum(C, 0.0, out=C)
@@ -335,33 +376,38 @@ def run_dispersion(
     tiempo_simulado_s=900.0,
     inversion_termica=False,
     C_inicial=None,
+    landuse_map=None,
 ):
     """
     Resuelve la ecuación de advección-difusión:
-        ∂C/∂t = -u·∂C/∂x - v·∂C/∂y + D·∇²C + S - k·C
+        ∂C/∂t = -u(x,y)·∂C/∂x - v(x,y)·∂C/∂y + D(x,y)·∇²C + S - k·C
 
     Esquema explícito en diferencias finitas:
-      - Advección: upwind de 1er orden (estable)
-      - Difusión:  laplaciano centrado
+      - Advección: upwind de 1er orden (estable), con u/v por celda si
+                   se proporciona landuse_map.
+      - Difusión:  laplaciano centrado con D variable por celda.
       - Frontera:  aire entrante = 0 (aire regional limpio)
 
     Args:
         grid: dict de build_grid
         emisiones: matriz S (fuentes)
-        wind_speed_ms: |U|
-        wind_direction_deg: dirección meteorológica
+        wind_speed_ms: |U| (m/s)
+        wind_direction_deg: dirección meteorológica (desde)
         temperatura_c, presion_hpa: variables ambientales
         tiempo_simulado_s: duración física a integrar (default 15 min)
         inversion_termica: True modela inversión térmica
-        C_inicial: matriz de concentración previa (para continuar la
-                   simulación hora a hora). Si es None, empieza desde 0.
+        C_inicial: matriz de concentración previa (arrastre hora a hora).
+                   Si es None, empieza desde 0.
+        landuse_map: matriz LUSE_* de landuse.build_landuse_map.
+                     Si se pasa, D, u y v varían celda a celda según el
+                     tipo de uso de suelo (arbolado, edificios, etc.).
 
     Returns:
         C: matriz de concentración (μg/m³ aproximado)
     """
     p = _setup_dispersion(grid, emisiones, wind_speed_ms, wind_direction_deg,
                           temperatura_c, presion_hpa, tiempo_simulado_s,
-                          inversion_termica)
+                          inversion_termica, landuse_map=landuse_map)
     if C_inicial is not None and C_inicial.shape == emisiones.shape:
         C = C_inicial.astype(np.float32, copy=True)
     else:
@@ -383,13 +429,14 @@ def run_dispersion_animated(
     n_frames=40,
     inversion_termica=False,
     C_inicial=None,
+    landuse_map=None,
 ):
     """
     Igual que run_dispersion pero captura instantáneas a lo largo de la
     integración, para animar el movimiento de la pluma "en tiempo casi real".
 
     Args:
-        (idénticos a run_dispersion)
+        (idénticos a run_dispersion, incluyendo landuse_map opcional)
         tiempo_simulado_s: duración física a integrar (default 10 min)
         n_frames: número de instantáneas a capturar
 
@@ -400,7 +447,7 @@ def run_dispersion_animated(
     """
     p = _setup_dispersion(grid, emisiones, wind_speed_ms, wind_direction_deg,
                           temperatura_c, presion_hpa, tiempo_simulado_s,
-                          inversion_termica)
+                          inversion_termica, landuse_map=landuse_map)
     if C_inicial is not None and C_inicial.shape == emisiones.shape:
         C = C_inicial.astype(np.float32, copy=True)
     else:

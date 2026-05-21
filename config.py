@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
-"""
-Configuración global de la aplicación.
-Contiene variables globales que facilitan la personalización y renombrado de la app.
-"""
+# =====================================================================
+# CONFIGURACIÓN GLOBAL DEL PROYECTO
+# =====================================================================
 
-# Nombre oficial del proyecto
-PROJECT_NAME = "SisDina"
+# Nombre del proyecto
+PROJECT_NAME = "AirSim"
+
+# Subtítulo o descripción corta del proyecto
+PROJECT_SUBTITLE = "Simulador de Calidad del Aire - UANL"

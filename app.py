@@ -1322,6 +1322,69 @@ with st.expander("**Métricas detalladas de la simulación actual**", expanded=T
     m4.metric(f"{contaminante} máx", f"{C_dentro.max():.1f} μg/m³")
 
 
+# Tarjeta "Medido en vivo": solo en modos tiempo real / pronóstico,
+# trae automáticamente la lectura modelada de Open-Meteo Air Quality
+# (CAMS global) y la compara con lo que el simulador local predice.
+if not es_modo_escenario:
+    from weather import get_current_air_quality
+    with st.spinner("Consultando Open-Meteo Air Quality..."):
+        med = get_current_air_quality(lat=CENTER_LAT, lon=CENTER_LON)
+
+    col_map_om = {"PM2.5": "pm2_5", "PM10": "pm10",
+                  "NOx": "no2", "SO2": "so2"}
+    valor_medido = med.get(col_map_om.get(contaminante, "pm2_5"))
+
+    if med["ok"] and valor_medido is not None:
+        # Calcular ICA simulado del centro del polígono para comparar
+        from simulator import calculate_ica
+        centro_i = grid["filas"] // 2
+        centro_j = grid["columnas"] // 2
+        # Tomar promedio de 5x5 alrededor del centro de CU
+        sub_C = C_dentro[max(0, centro_i-2):centro_i+3,
+                         max(0, centro_j-2):centro_j+3] \
+                if C_dentro.ndim == 2 else None
+        c_sim_centro = float(sub_C.mean()) if sub_C is not None else \
+                       float(np.mean(C_dentro))
+        ica_medido_array = calculate_ica(np.array([valor_medido]), contaminante)
+        ica_medido = float(ica_medido_array[0])
+        cat_med_om, _ = categoria_ica(ica_medido)
+
+        diff_ugm3 = c_sim_centro - valor_medido
+        diff_str = f"{diff_ugm3:+.1f} μg/m³ vs simulado"
+
+        st.markdown("##### Comparación con lectura en vivo")
+        live1, live2, live3, live4 = st.columns(4)
+        live1.metric(
+            f"{contaminante} medido",
+            f"{valor_medido:.1f} μg/m³",
+            help=f"Fuente: {med['fuente']} · "
+                 f"hora: {med['fecha'] or 'reciente'}",
+        )
+        live2.metric(
+            f"{contaminante} simulado (centro CU)",
+            f"{c_sim_centro:.1f} μg/m³",
+            diff_str,
+            delta_color="normal",
+        )
+        live3.metric("ICA medido (NOM-172)",
+                     f"{ica_medido:.0f}", cat_med_om)
+        live4.metric("US AQI (Open-Meteo)",
+                     f"{med['us_aqi']:.0f}" if med['us_aqi'] is not None else "—",
+                     "EPA estándar")
+
+        st.caption(
+            f"Datos de **CAMS** vía Open-Meteo (modelo global ~45 km, "
+            f"actualizado cada 12 h). Para comparar con mediciones reales "
+            f"en estación física, ve al tab **Validación SIMA** y usa "
+            f"un CSV descargado de SINAICA."
+        )
+    elif not med["ok"]:
+        st.caption(
+            f"*Lectura en vivo de Open-Meteo Air Quality no disponible "
+            f"({med['fuente']}). La simulación local sigue funcionando.*"
+        )
+
+
 # =====================================================================
 # TABS: MAPA / PRONOSTICO / RUTAS
 # =====================================================================

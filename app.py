@@ -81,6 +81,12 @@ from recommendations import (
     hourly_pollution_forecast, mask_recommendation,
     recomendaciones_de_accion, recomendaciones_pronostico, route_stats,
 )
+from landuse import (
+    build_landuse_map, resumen_landuse, DEFAULT_LANDUSE,
+    LUSE_VACIO, LUSE_ZONA_ARBOLADA, LUSE_EDIFICIO_DENSO,
+    LUSE_ZONA_ABIERTA, LUSE_ZONA_AGUA, LUSE_ZONA_INDUSTRIAL,
+    fetch_osm_landuse,
+)
 
 
 # =====================================================================
@@ -102,6 +108,17 @@ def cargar_red_vial(usar_osm: bool):
     if usar_osm:
         return fetch_osm_roads(grid["bounds"])
     return DEFAULT_ROADS
+
+
+@st.cache_resource(show_spinner="Cargando uso de suelo…")
+def cargar_landuse(usar_osm: bool):
+    """Rasteriza las zonas de uso de suelo sobre la rejilla (con caché)."""
+    grid, _, _ = cargar_grid_y_infra()
+    if usar_osm:
+        zonas = fetch_osm_landuse(grid["bounds"])
+    else:
+        zonas = DEFAULT_LANDUSE
+    return build_landuse_map(grid, zonas=zonas)
 
 
 @st.cache_data(show_spinner="Calculando dispersión con tráfico…")
@@ -498,9 +515,78 @@ def ica_a_rgba(ica_matrix, mask=None, sigma=1.8, upscale=6,
     return rgba8
 
 
+# ---------------------------------------------------------------------------
+# COLORES Y ETIQUETAS PARA LAS CAPAS DE USO DE SUELO
+# ---------------------------------------------------------------------------
+
+_LUSE_STYLE = {
+    LUSE_VACIO:           {"color": "#888888", "label": "Vacío / asfalto",    },
+    LUSE_ZONA_ARBOLADA:   {"color": "#2ecc71", "label": "Arbolado / parque",   },
+    LUSE_EDIFICIO_DENSO:  {"color": "#e74c3c", "label": "Edificación densa",   },
+    LUSE_ZONA_ABIERTA:    {"color": "#f39c12", "label": "Zona abierta",        },
+    LUSE_ZONA_AGUA:       {"color": "#3498db", "label": "Agua",                },
+    LUSE_ZONA_INDUSTRIAL: {"color": "#8e44ad", "label": "Industrial",          },
+}
+
+
+def _landuse_rgba(landuse_map: np.ndarray, mask: np.ndarray,
+                  upscale: int = 6) -> np.ndarray:
+    """
+    Convierte la matriz landuse_map en una imagen RGBA para overlay en Folium.
+    Cada tipo de celda recibe su color semisólido; fuera de la máscara es transparente.
+    """
+    h, w = landuse_map.shape
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    for luse_type, style in _LUSE_STYLE.items():
+        if luse_type == LUSE_VACIO:
+            continue  # vacío queda transparente (no distraye)
+        m = (landuse_map == luse_type) & mask
+        color = mcolors.to_rgba(style["color"])
+        rgba[m] = [int(color[0]*255), int(color[1]*255),
+                   int(color[2]*255), 160]  # 160/255 ≈ 63% opacidad
+    # Aplicar máscara del polígono
+    rgba[~mask, 3] = 0
+    img = Image.fromarray(rgba, mode="RGBA")
+    if upscale > 1:
+        img = img.resize((w * upscale, h * upscale), resample=Image.NEAREST)
+    return np.array(img)
+
+
+def _agregar_landuse_overlay(mapa: folium.Map, grid: dict, mask: np.ndarray,
+                              landuse_map: np.ndarray) -> None:
+    """
+    Añade una capa de uso de suelo semi-transparente sobre el mapa Folium.
+    Los colores representan el tipo de celda que afecta la fricción del viento.
+    """
+    rgba8 = _landuse_rgba(landuse_map, mask)
+    rgba_flip = np.flipud(rgba8)
+    img = Image.fromarray(rgba_flip, mode="RGBA")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    img_b64 = base64.b64encode(buf.read()).decode("ascii")
+    data_url = f"data:image/png;base64,{img_b64}"
+
+    b = grid["bounds"]
+    half_lat = (b["max_lat"] - b["min_lat"]) / max(1, grid["filas"] - 1) / 2
+    half_lon = (b["max_lon"] - b["min_lon"]) / max(1, grid["columnas"] - 1) / 2
+    bounds_overlay = [
+        [b["min_lat"] - half_lat, b["min_lon"] - half_lon],
+        [b["max_lat"] + half_lat, b["max_lon"] + half_lon],
+    ]
+    folium.raster_layers.ImageOverlay(
+        image=data_url,
+        bounds=bounds_overlay,
+        opacity=1.0,          # el alfa ya va en la imagen
+        interactive=False,
+        name="Uso de suelo",
+        show=False,
+    ).add_to(mapa)
+
+
 def construir_mapa(grid, mask, inf, ica_matrix, roads=None, ruta_puntos=None,
                    ruta_limpia=None, contaminante="PM2.5", usar_osm=False,
-                   alto_contraste: bool = False):
+                   alto_contraste: bool = False, landuse_map=None):
     """Construye el mapa Folium con todas las capas."""
     tiles = "CartoDB dark_matter" if alto_contraste else "CartoDB Positron"
     mapa = folium.Map(
@@ -509,6 +595,10 @@ def construir_mapa(grid, mask, inf, ica_matrix, roads=None, ruta_puntos=None,
         tiles=tiles,
         control_scale=True,
     )
+
+    # --- Capa de Uso de Suelo (Opcional, se dibuja debajo del ICA para que no lo tape por completo) ---
+    if landuse_map is not None:
+        _agregar_landuse_overlay(mapa, grid, mask, landuse_map)
 
     # --- Heatmap de ICA (overlay de imagen) ---
     # La matriz está en orden (filas, cols) = (lat ascendente, lon ascendente)
@@ -1256,10 +1346,58 @@ with st.expander("**Métricas detalladas de la simulación actual**", expanded=T
 # ----- TAB 1: MAPA -----
 with tab_mapa:
     st.markdown(f"#### Distribución espacial del {contaminante} sobre el polígono de CU")
+
+    lm = cargar_landuse(usar_osm)
     mapa = construir_mapa(grid, mask, inf, A, roads=roads,
                           contaminante=contaminante, usar_osm=usar_osm,
-                          alto_contraste=alto_contraste)
+                          alto_contraste=alto_contraste, landuse_map=lm)
+
     st_folium(mapa, width=None, height=580, returned_objects=[])
+
+    with st.expander("Mostrar leyenda de uso de suelo", expanded=False):
+        # Leyenda de uso de suelo (horizontal sin emojis)
+        leyenda_items = "".join(
+            f"""
+            <div style="display:flex; align-items:center; gap:6px;
+                        font-size:13px; margin-right: 15px; margin-bottom: 5px;">
+              <span style="display:inline-block; width:14px; height:14px;
+                           border-radius:3px; background:{s['color']};
+                           flex-shrink:0;"></span>
+              <b>{s['label']}</b>
+            </div>
+            """
+            for t, s in _LUSE_STYLE.items() if t != LUSE_VACIO
+        )
+        st.markdown(
+            f"""
+            <div style="border:1px solid rgba(128,128,128,0.2); border-radius:8px;
+                        padding:12px 16px; margin-top:6px; margin-bottom:12px;">
+              <b style="font-size:14px;">Colores en la capa de uso de suelo</b>
+              <div style="display:flex; flex-wrap:wrap; margin-top:8px;">
+                {leyenda_items}
+              </div>
+              <div style="margin-top:4px; font-size:12px; color:#555;">
+                Las celdas de <b>vías y vacío</b> no se colorean (transparentes). Activa la capa en el control superior derecho del mapa.
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Resumen de celdas
+        lm_resumen = resumen_landuse(lm)
+        st.markdown("##### Distribución de tipos de celda")
+        cols_r = st.columns(len(_LUSE_STYLE) - 1)  # sin VACIO
+        idx_col = 0
+        for t, s in _LUSE_STYLE.items():
+            if t == LUSE_VACIO:
+                continue
+            data = lm_resumen.get(s["label"], {"celdas": 0, "pct": 0.0})
+            cols_r[idx_col].metric(
+                f"{s['label']}",
+                f"{data['celdas']:,}"
+            )
+            idx_col += 1
 
     st.markdown(
         """

@@ -18,6 +18,7 @@ Equipo 11 - Brigada 003 - Modelado y Simulación
 """
 import streamlit as st
 import time
+from config import PROJECT_NAME
 
 
 # =====================================================================
@@ -25,7 +26,7 @@ import time
 # =====================================================================
 
 st.set_page_config(
-    page_title="Simulador Calidad del Aire - UANL",
+    page_title=f"{PROJECT_NAME} - Simulador Calidad del Aire - UANL",
     page_icon="🌫️",
     layout="wide",
 )
@@ -760,7 +761,7 @@ def _render_frame_mpl(ica_matrix, t_segundos, grid, mask, roads,
 # UI: SIDEBAR
 # =====================================================================
 
-st.title("🌫️ Simulador de Calidad del Aire — Ciudad Universitaria UANL")
+st.title(f"🌫️ {PROJECT_NAME} — Simulador de Calidad del Aire — Ciudad Universitaria UANL")
 st.caption(
     "Motor de dispersión advección-difusión 2D · Datos Open-Meteo · "
     "ICA según NOM-172-SEMARNAT-2019 · Equipo 11 · Brigada 003"

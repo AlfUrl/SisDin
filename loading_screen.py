@@ -1,5 +1,6 @@
 import streamlit as st
 import time
+from config import PROJECT_NAME
 
 def show_loading_screen():
     """Muestra la pantalla de carga inicial si no se ha cargado la app."""
@@ -197,7 +198,7 @@ def show_loading_screen():
                     }
                 }
                 </style>
-                """,
+                """.replace("SisDin", PROJECT_NAME),
                 unsafe_allow_html=True,
             )
         # Pequeño delay para asegurar que Streamlit envíe y renderice el HTML del loading screen

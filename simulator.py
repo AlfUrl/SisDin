@@ -137,10 +137,10 @@ AVENIDAS = {
     },
 }
 
-# Planta Ternium - aproximación al norte/noreste del polígono.
+# Planta Ternium - ubicación real al este/sureste de Ciudad Universitaria.
 TERNIUM_AREA = {
-    "lat_range": (25.7298, 25.7340),
-    "lon_range": (-100.3050, -100.2998),
+    "lat_range": (25.7180, 25.7240),
+    "lon_range": (-100.3060, -100.2980),
     "tipo": INF_FABRICA,
     "tasa_emision": 1.0,
 }

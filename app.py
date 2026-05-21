@@ -433,7 +433,7 @@ def selector_direccion_viento(default_deg: int = 90, key: str = "viento_dir",
                     st.session_state[state_key] = ang
                     st.rerun()
 
-    with st.expander("Ajuste fino (grados exactos)"):
+    with st.expander("Ajuste por grados"):
         fino = st.slider("Dirección", 0, 359, direccion,
                          key=f"{key}_fino_slider")
         if fino != direccion:
@@ -765,6 +765,20 @@ st.title(f"{PROJECT_NAME} — Simulador de Calidad del Aire — Ciudad Universit
 st.caption(
     "Motor de dispersión advección-difusión 2D · Datos Open-Meteo · "
     "ICA según NOM-172-SEMARNAT-2019 · Equipo 11 · Brigada 003"
+)
+
+# ---- CSS global: tamaño de letra de títulos de expander ----
+st.markdown(
+    """
+    <style>
+    /* Título de los st.expander */
+    [data-testid="stExpander"] details summary p {
+        font-size: 1.4rem !important;   
+        font-weight: 700 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 # Modos disponibles: identifican claramente qué se está mostrando.
@@ -1143,80 +1157,81 @@ acciones = recomendaciones_de_accion(
 )
 
 # Mostrar acciones recomendadas
-st.markdown("##### Qué hacer ahora")
-for a in acciones:
-    st.markdown(f"{a}", unsafe_allow_html=True)
-st.markdown(f"**Cubrebocas**: {mask_recommendation(ica_max_val)}", unsafe_allow_html=True)
+with st.expander("**¿Qué hacer ahora?**", expanded=True):
+    for a in acciones:
+        st.markdown(f"{a}", unsafe_allow_html=True)
+    st.markdown(f"**Cubrebocas**: {mask_recommendation(ica_max_val)}", unsafe_allow_html=True)
 
 
 # ----------------------------------------------------------------
 # Panel: factores ambientales + pronóstico próximas horas
 # ----------------------------------------------------------------
-col_fac, col_pron = st.columns([3, 2])
+with st.expander("**Explicación de las condiciones**", expanded=True):
+    col_fac, col_pron = st.columns([3, 2])
 
-with col_fac:
-    st.markdown("##### Por qué el aire está así")
-    _color_imp = {
-        "bueno":   "#1a9850",
-        "neutro":  "#777",
-        "malo":    "#f46d43",
-        "crítico": "#a50026",
-    }
-    for f in factores:
-        c = _color_imp[f["impacto"]]
-        st.markdown(
-            f"""
-            <div style="border-left: 4px solid {c}; padding: 6px 10px;
-                        margin-bottom: 6px; background: rgba(0,0,0,0.025);">
-              <span style="font-size: 14px; display:flex; align-items:center;">
-                {f['icono']} <b>{f['etiqueta']}</b>:&nbsp;
-                <span style="color:{c};"><b>{f['valor']}</b></span>
-              </span>
-              <div style="font-size: 12px; color: #555; margin-top: 2px;">
-                {f['mensaje']}
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-with col_pron:
-    if forecast_ica:
-        st.markdown("##### Próximas horas")
-        for f in forecast_ica:
-            cat_f, color_f = categoria_ica(f["ica_max"])
-            etiqueta = f["datetime"].strftime("%H:00")
-            # Barra horizontal proporcional al ICA (escala 0-200)
-            ancho = min(100, int(f["ica_max"] / 200 * 100))
+    with col_fac:
+        st.markdown("##### Factores ambientales")
+        _color_imp = {
+            "bueno":   "#1a9850",
+            "neutro":  "#777",
+            "malo":    "#f46d43",
+            "crítico": "#a50026",
+        }
+        for f in factores:
+            c = _color_imp[f["impacto"]]
             st.markdown(
                 f"""
-                <div style="margin-bottom: 5px;">
-                  <div style="display:flex; justify-content:space-between;
-                              font-size:12px; color:#333;">
-                    <span><b>{etiqueta}</b></span>
-                    <span><b>{f['ica_max']:.0f}</b> {cat_f}</span>
-                  </div>
-                  <div style="background:#e9ecef; border-radius:3px;
-                              height:6px; overflow:hidden;">
-                    <div style="width:{ancho}%; height:100%; background:{color_f};"></div>
+                <div style="border-left: 4px solid {c}; padding: 6px 10px;
+                            margin-bottom: 6px; background: rgba(0,0,0,0.025);">
+                  <span style="font-size: 14px; display:flex; align-items:center;">
+                    {f['icono']} <b>{f['etiqueta']}</b>:&nbsp;
+                    <span style="color:{c};"><b>{f['valor']}</b></span>
+                  </span>
+                  <div style="font-size: 12px; color: #555; margin-top: 2px;">
+                    {f['mensaje']}
                   </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-    elif es_modo_escenario:
-        st.markdown("##### Próximas horas")
-        st.caption("_Disponible en modos Tiempo real y Pronóstico._")
-    else:
-        st.markdown("##### Próximas horas")
-        st.caption("_No hay datos de pronóstico disponibles._")
+
+    with col_pron:
+        if forecast_ica:
+            st.markdown("##### Próximas horas")
+            for f in forecast_ica:
+                cat_f, color_f = categoria_ica(f["ica_max"])
+                etiqueta = f["datetime"].strftime("%H:00")
+                # Barra horizontal proporcional al ICA (escala 0-200)
+                ancho = min(100, int(f["ica_max"] / 200 * 100))
+                st.markdown(
+                    f"""
+                    <div style="margin-bottom: 5px;">
+                      <div style="display:flex; justify-content:space-between;
+                                  font-size:12px; color:#333;">
+                        <span><b>{etiqueta}</b></span>
+                        <span><b>{f['ica_max']:.0f}</b> {cat_f}</span>
+                      </div>
+                      <div style="background:#e9ecef; border-radius:3px;
+                                  height:6px; overflow:hidden;">
+                        <div style="width:{ancho}%; height:100%; background:{color_f};"></div>
+                      </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        elif es_modo_escenario:
+            st.markdown("##### Próximas horas")
+            st.caption("_Disponible en modos Tiempo real y Pronóstico._")
+        else:
+            st.markdown("##### Próximas horas")
+            st.caption("_No hay datos de pronóstico disponibles._")
 
 
 # =====================================================================
 # METRICAS DETALLADAS
 # =====================================================================
 
-with st.expander("Métricas detalladas de la simulación actual"):
+with st.expander("**Métricas detalladas de la simulación actual**", expanded=True):
     cat_max, _ = categoria_ica(ica_max_val)
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("ICA máximo", f"{ica_max_val:.0f}", cat_max)
@@ -1548,62 +1563,62 @@ with tab_evolucion:
               returned_objects=[], key=f"map_h{hora_view}")
 
     # ---- Gráfico de evolución 24h ----
-    st.markdown("##### Evolución horaria del ICA y del flujo vehicular")
-    df_evol = pd.DataFrame([{
-        "hora": f["hora"],
-        "ica_medio": float(f["ica"][mask].mean()),
-        "ica_max":   float(f["ica"][mask].max()),
-        "ica_p95":   float(np.percentile(f["ica"][mask], 95)),
-        "veh_total": float(f["traffic"].sum()) / 1000.0,  # miles
-    } for f in frames])
+    with st.expander("**Evolución horaria del ICA y del flujo vehicular**", expanded=True):
+        df_evol = pd.DataFrame([{
+            "hora": f["hora"],
+            "ica_medio": float(f["ica"][mask].mean()),
+            "ica_max":   float(f["ica"][mask].max()),
+            "ica_p95":   float(np.percentile(f["ica"][mask], 95)),
+            "veh_total": float(f["traffic"].sum()) / 1000.0,  # miles
+        } for f in frames])
 
-    # Doble eje: ICA + flujo vehicular
-    fig_evol = go.Figure()
-    fig_evol.add_trace(go.Scatter(
-        x=df_evol["hora"], y=df_evol["ica_max"], name="ICA máximo",
-        mode="lines+markers", line=dict(color="#D62728", width=3),
-    ))
-    fig_evol.add_trace(go.Scatter(
-        x=df_evol["hora"], y=df_evol["ica_p95"], name="ICA p95",
-        mode="lines", line=dict(color="#FF7F0E", dash="dash"),
-    ))
-    fig_evol.add_trace(go.Scatter(
-        x=df_evol["hora"], y=df_evol["ica_medio"], name="ICA medio",
-        mode="lines+markers", line=dict(color="#2CA02C", width=2),
-        fill="tozeroy", fillcolor="rgba(44,160,44,0.15)",
-    ))
-    fig_evol.add_trace(go.Scatter(
-        x=df_evol["hora"], y=df_evol["veh_total"], name="Flujo (miles veh-celda/h)",
-        mode="lines", line=dict(color="#1F77B4", width=2, dash="dot"),
-        yaxis="y2", opacity=0.7,
-    ))
-    # marcar hora seleccionada
-    fig_evol.add_vline(x=hora_view, line_dash="solid",
-                       line_color="#888", line_width=2,
-                       annotation_text=f"{hora_view}:00",
-                       annotation_position="top")
-    fig_evol.update_layout(
-        height=380,
-        xaxis_title="Hora del día",
-        yaxis=dict(title="ICA", side="left"),
-        yaxis2=dict(title="Flujo (miles veh-celda/h)", side="right",
-                    overlaying="y", showgrid=False),
-        hovermode="x unified",
-        legend=dict(orientation="h", y=1.10),
-    )
-    st.plotly_chart(fig_evol, width="stretch")
+        # Doble eje: ICA + flujo vehicular
+        fig_evol = go.Figure()
+        fig_evol.add_trace(go.Scatter(
+            x=df_evol["hora"], y=df_evol["ica_max"], name="ICA máximo",
+            mode="lines+markers", line=dict(color="#D62728", width=3),
+        ))
+        fig_evol.add_trace(go.Scatter(
+            x=df_evol["hora"], y=df_evol["ica_p95"], name="ICA p95",
+            mode="lines", line=dict(color="#FF7F0E", dash="dash"),
+        ))
+        fig_evol.add_trace(go.Scatter(
+            x=df_evol["hora"], y=df_evol["ica_medio"], name="ICA medio",
+            mode="lines+markers", line=dict(color="#2CA02C", width=2),
+            fill="tozeroy", fillcolor="rgba(44,160,44,0.15)",
+        ))
+        fig_evol.add_trace(go.Scatter(
+            x=df_evol["hora"], y=df_evol["veh_total"], name="Flujo (miles veh-celda/h)",
+            mode="lines", line=dict(color="#1F77B4", width=2, dash="dot"),
+            yaxis="y2", opacity=0.7,
+        ))
+        # marcar hora seleccionada
+        fig_evol.add_vline(x=hora_view, line_dash="solid",
+                           line_color="#888", line_width=2,
+                           annotation_text=f"{hora_view}:00",
+                           annotation_position="top")
+        fig_evol.update_layout(
+            height=380,
+            xaxis_title="Hora del día",
+            yaxis=dict(title="ICA", side="left"),
+            yaxis2=dict(title="Flujo (miles veh-celda/h)", side="right",
+                        overlaying="y", showgrid=False),
+            hovermode="x unified",
+            legend=dict(orientation="h", y=1.10),
+        )
+        st.plotly_chart(fig_evol, width="stretch")
 
-    # ---- Insight automático ----
-    hora_pico_ica = int(df_evol["ica_max"].idxmax())
-    ica_min_h = int(df_evol["ica_max"].idxmin())
-    delta = df_evol.loc[hora_pico_ica, "ica_max"] - df_evol.loc[ica_min_h, "ica_max"]
-    st.info(
-        f"**Análisis del día**: el ICA máximo se alcanza a las "
-        f"**{hora_pico_ica:02d}:00** (ICA={df_evol.loc[hora_pico_ica, 'ica_max']:.0f}), "
-        f"un aumento de **+{delta:.0f}** puntos respecto al mínimo de las "
-        f"{ica_min_h:02d}:00. El flujo vehicular es el principal motor de "
-        f"esta variación diaria."
-    )
+        # ---- Insight automático ----
+        hora_pico_ica = int(df_evol["ica_max"].idxmax())
+        ica_min_h = int(df_evol["ica_max"].idxmin())
+        delta = df_evol.loc[hora_pico_ica, "ica_max"] - df_evol.loc[ica_min_h, "ica_max"]
+        st.info(
+            f"**Análisis del día**: el ICA máximo se alcanza a las "
+            f"**{hora_pico_ica:02d}:00** (ICA={df_evol.loc[hora_pico_ica, 'ica_max']:.0f}), "
+            f"un aumento de **+{delta:.0f}** puntos respecto al mínimo de las "
+            f"{ica_min_h:02d}:00. El flujo vehicular es el principal motor de "
+            f"esta variación diaria."
+        )
 
 # ----- TAB 2: PRONOSTICO -----
 with tab_pronostico:

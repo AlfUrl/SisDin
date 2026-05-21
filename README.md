@@ -1,5 +1,6 @@
 # Simulador de Calidad del Aire — Ciudad Universitaria UANL
 
+
 Motor de simulación predictiva de dispersión de contaminantes atmosféricos
 sobre el polígono de Ciudad Universitaria (UANL, Monterrey), acoplado a un
 **modelo de flujo vehicular** y con recomendaciones operativas para la
@@ -8,6 +9,11 @@ comunidad.
 > **Equipo 11 · Brigada 003** · Modelado y Simulación de Sistemas Dinámicos
 
 ---
+
+## Arranque 
+
+Arrancar el sistema ejecutando "iniciador.bat"
+
 
 ## ¿Qué hace?
 

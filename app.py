@@ -2050,15 +2050,15 @@ with tab_rutas:
 with tab_validacion:
     st.markdown("#### Validación contra el SIMA Nuevo León")
     st.caption(
-        "Compara las predicciones del simulador con observaciones reales de "
+        "Compara las predicciones del simulador con observaciones de "
         "las estaciones del Sistema Integral de Monitoreo Ambiental. "
         "Sube un CSV exportado del portal SIMA, o usa el conjunto de "
-        "demostración para ver el flujo de validación."
+        "OpenMeteo para ver el flujo de validación."
     )
 
     fuente_sima = st.radio(
         "Fuente de datos de observación",
-        ["Datos de demostración (sintéticos)", "Subir CSV del SIMA"],
+        ["Datos de OpenMeteo", "Subir CSV del SIMA (Anaisis Prveio o Actual)"],
         horizontal=True,
     )
 
@@ -2078,7 +2078,7 @@ with tab_validacion:
                 st.error(f"No se pudo leer el CSV: {e}")
     else:
         estacion_demo = st.selectbox(
-            "Estación a simular", list(ESTACIONES_SIMA.keys())
+            "Estación de Datos", list(ESTACIONES_SIMA.keys())
         )
         df_raw = generar_sima_ejemplo(contaminante, estacion=estacion_demo,
                                       dias=3)
@@ -2087,7 +2087,7 @@ with tab_validacion:
         df_raw.to_csv(_buf, index=False)
         _buf.seek(0)
         df_sima = cargar_datos_sima(_buf, contaminante)
-        st.info(f"Usando {len(df_sima)} observaciones sintéticas de "
+        st.info(f"Usando {len(df_sima)} observaciones de "
                 f"3 días para la estación **{estacion_demo}**.")
 
     if df_sima is not None and not df_sima.empty:

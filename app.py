@@ -1376,255 +1376,260 @@ acciones = recomendaciones_de_accion(
 # Panel de grupos de riesgo: las tarjetas SON los botones
 # Los grupos MULTIPLICAN el ICA general (multicontaminante)
 # ----------------------------------------------------------------
-def _seleccionar_grupo(g_id):
-    """Callback para cambiar el grupo seleccionado."""
-    st.session_state["grupo_seleccionado"] = g_id
+@st.fragment
+def render_risk_groups(ica_general_base):
+    def _seleccionar_grupo(g_id):
+        """Callback para cambiar el grupo seleccionado."""
+        st.session_state["grupo_seleccionado"] = g_id
 
-with st.expander("**Estado por Grupos de Riesgo**", expanded=True):
-    # Marker element to anchor the CSS selector
-    st.markdown('<div class="risk-group-marker" style="display:none;"></div>', unsafe_allow_html=True)
+    with st.expander("**Estado por Grupos de Riesgo**", expanded=True):
+        # Marker element to anchor the CSS selector
+        st.markdown('<div class="risk-group-marker" style="display:none;"></div>', unsafe_allow_html=True)
 
-    # CSS injection for custom risk cards styling and overlaying invisible Streamlit buttons
-    st.markdown(
-        """
-        <style>
-        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] {
-            position: relative !important;
-            display: flex !important;
-            flex-direction: column !important;
-        }
-
-        .risk-card {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 16px 12px;
-            border-radius: 10px;
-            border: 1.5px solid rgba(255,255,255,0.12);
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            min-height: 180px;
-            width: 100%;
-            height: 100%;
-            box-sizing: border-box;
-            background: rgba(255,255,255,0.03);
-            cursor: pointer;
-        }
-
-        div[data-testid="column"]:hover .risk-card {
-            background: rgba(255,255,255,0.08) !important;
-            border-color: rgba(255,255,255,0.3) !important;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
-
-        .risk-card.selected {
-            border-width: 2.5px !important;
-            transform: translateY(-2px);
-        }
-
-        .risk-card-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 8px;
-            transition: transform 0.2s ease;
-        }
-
-        div[data-testid="column"]:hover .risk-card-icon {
-            transform: scale(1.1);
-        }
-
-        .risk-card-name {
-            font-size: 12.5px;
-            font-weight: 700;
-            color: #eee;
-            line-height: 1.25;
-            margin-bottom: 5px;
-        }
-
-        .risk-card-level {
-            font-size: 11px;
-            font-weight: 900;
-            letter-spacing: 0.8px;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-        }
-
-        .risk-card-formula {
-            font-size: 10.5px;
-            color: #aaa;
-            background: rgba(0,0,0,0.20);
-            padding: 3px 6px;
-            border-radius: 4px;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .risk-card-sel {
-            font-size: 9px;
-            font-weight: 900;
-            margin-top: 8px;
-            letter-spacing: 0.5px;
-            animation: pulse_sel 2s infinite;
-        }
-
-        @keyframes pulse_sel {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
-
-        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            z-index: 10 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-
-        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button {
-            width: 100% !important;
-            height: 100% !important;
-            background: transparent !important;
-            border: none !important;
-            color: transparent !important;
-            box-shadow: none !important;
-            cursor: pointer !important;
-            padding: 0 !important;
-            margin: 0 !important;
-        }
-        
-        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:hover,
-        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:focus,
-        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:active {
-            background: transparent !important;
-            border: none !important;
-            color: transparent !important;
-            box-shadow: none !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        f'Los valores de cada grupo se calculan aplicando su **factor de sensibilidad** '
-        f'sobre el ICA general multicontaminante (**{ica_general_base:.0f}**):'
-    )
-    resumen = get_all_groups_summary(ica_general_base)
-    cols = st.columns(len(resumen))
-    for i, r in enumerate(resumen):
-        with cols[i]:
-            c_hex = r['nivel']['color']
-            g_id = r['id']
-            g_info = RISK_GROUPS[g_id]
-            factor = g_info["factor_sensibilidad"]
-            is_selected = (g_id == st.session_state["grupo_seleccionado"])
-            border_w = "2.5px" if is_selected else "1px"
-            bg_op = "25" if is_selected else "08"
-            shadow = f"0 0 15px {c_hex}44" if is_selected else "none"
-            sel_label = "● SELECCIONADO" if is_selected else ""
-            sel_style = f"font-weight:900; color:{c_hex};" if is_selected else ""
-            svg_icon = g_info["icono"]
-
-            # Tarjeta visual interactiva en HTML
-            st.markdown(f"""
-            <div class="risk-card {"selected" if is_selected else ""}" 
-                 style="border-color: {c_hex}; background: {c_hex}{bg_op}; box-shadow: {shadow};">
-                <div class="risk-card-icon" style="color: {c_hex};">{svg_icon}</div>
-                <div class="risk-card-name">{r['nombre']}</div>
-                <div class="risk-card-level" style="color: {c_hex};">{r['nivel']['nombre']}</div>
-                <div class="risk-card-formula">
-                    {ica_general_base:.0f} × {factor:.1f} = <b style="color: #eee;">{r['ica_efectivo']:.0f}</b>
-                </div>
-                {"<div class='risk-card-sel' style='" + sel_style + "'>" + sel_label + "</div>" if is_selected else ""}
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Botón de Streamlit transparente que cubre toda la tarjeta
-            st.button(
-                f"Seleccionar {r['nombre']}",
-                key=f"btn_grupo_{g_id}",
-                on_click=_seleccionar_grupo,
-                args=(g_id,),
-            )
-
-    # ---- Panel de detalle para el grupo seleccionado ----
-    st.markdown("---")
-    _sel_id = st.session_state["grupo_seleccionado"]
-    _sel_info = RISK_GROUPS[_sel_id]
-    _sel_factor = _sel_info["factor_sensibilidad"]
-    _sel_ica_eff = ica_general_base * _sel_factor
-    _sel_recs = get_recomendaciones(ica_general_base, [_sel_id])
-    _sel_nivel = _sel_recs["nivel"]
-    _sel_color = _sel_nivel["color"]
-    _sel_recomendaciones = _sel_recs["recomendaciones"]
-
-    # Cabecera de recomendaciones usando el mismo SVG
-    st.markdown(
-        f'<h3 style="display:flex; align-items:center; gap:10px; margin-top:20px; font-size: 1.4rem; font-weight: 700;">'
-        f'<span style="color:{_sel_color}; display:inline-flex; align-items:center; width:28px; height:28px;">{_sel_info["icono"]}</span>'
-        f'Recomendaciones para: <span style="color:{_sel_color}; margin-left:4px;">{_sel_info["nombre"]}</span>'
-        f'</h3>',
-        unsafe_allow_html=True
-    )
-    
-    st.markdown(
-        f'<div style="display:inline-flex; align-items:center; gap:12px; '
-        f'background:rgba(255,255,255,0.04); '
-        f'border:1.5px solid {_sel_color}; border-radius:8px; padding:10px 16px; '
-        f'font-size:13.5px; margin-bottom:16px; flex-wrap:wrap; box-shadow: 0 2px 10px rgba(0,0,0,0.2);">'
-        f'<span style="color:#bbb; font-weight: 500;">ICA base general:</span> '
-        f'<span style="font-size:18px; font-weight:800; color:#eee;">{ica_general_base:.0f}</span> '
-        f'<span style="color:#777; font-weight: 800;">×</span> '
-        f'<span style="font-size:14px; font-weight:500; color:#999;">Factor de sensibilidad (</span>'
-        f'<span style="font-size:16px; font-weight:700; color:{_sel_info["color"]};">{_sel_factor:.1f}</span>'
-        f'<span style="font-size:14px; font-weight:500; color:#999;">)</span> '
-        f'<span style="color:#777; font-weight: 800;">=</span> '
-        f'<span style="font-size:14px; font-weight:500; color:#999;">ICA efectivo percibido: </span>'
-        f'<span style="font-size:18px; font-weight:800; color:{_sel_color};">{_sel_ica_eff:.0f}</span> '
-        f'<span style="background:{_sel_color}22; color:{_sel_color}; padding:2px 8px; '
-        f'border-radius:4px; font-weight:800; font-size:11px; text-transform: uppercase; border: 1px solid {_sel_color}44; margin-left: 8px;">{_sel_nivel["nombre"]}</span>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Iconos SVG limpios para cada categoría de recomendación
-    RECOMMENDATION_SVGs = {
-        "actividad_exterior": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2z"/><path d="M8 6h8"/><path d="M8 10h8"/><path d="M8 14h8"/><path d="M8 18h8"/></svg>""",
-        "ejercicio": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="5" r="2"/><path d="M9 9l3 2 1-3 3.5 2M5 12h4l2 5v4M13 14l-2 5H7"/></svg>""",
-        "cubrebocas": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>""",
-        "ventilacion": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>""",
-        "transporte": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>""",
-        "alerta_medica": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>""",
-    }
-    _rec_labels = {
-        "actividad_exterior": "Actividad exterior",
-        "ejercicio": "Ejercicio",
-        "cubrebocas": "Cubrebocas",
-        "ventilacion": "Ventilación",
-        "transporte": "Transporte",
-        "alerta_medica": "Alerta médica",
-    }
-    for cat_key, cat_text in _sel_recomendaciones.items():
-        if cat_text is None:
-            continue
-        icon_svg = RECOMMENDATION_SVGs.get(cat_key, "📋")
-        label = _rec_labels.get(cat_key, cat_key)
+        # CSS injection for custom risk cards styling and overlaying invisible Streamlit buttons
         st.markdown(
-            f'<div style="border-left: 4px solid {_sel_color}; padding: 8px 12px; '
-            f'margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 0 8px 8px 0;'
-            f'border-top: 1px solid rgba(255,255,255,0.01); border-right: 1px solid rgba(255,255,255,0.01); border-bottom: 1px solid rgba(255,255,255,0.01);">'
-            f'<span style="font-size:14px; display:flex; align-items:center; gap:8px; color:#eee; font-weight:700;">'
-            f'<span style="color:{_sel_color}; display:inline-flex; align-items:center;">{icon_svg}</span>'
-            f'{label}</span>'
-            f'<span style="font-size:13px; color:#bbb; display:block; margin-top:4px; line-height:1.5;">{cat_text}</span></div>',
+            """
+            <style>
+            div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] {
+                position: relative !important;
+                display: flex !important;
+                flex-direction: column !important;
+            }
+
+            .risk-card {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                padding: 16px 12px;
+                border-radius: 10px;
+                border: 1.5px solid rgba(255,255,255,0.12);
+                transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                min-height: 180px;
+                width: 100%;
+                height: 100%;
+                box-sizing: border-box;
+                background: rgba(255,255,255,0.03);
+                cursor: pointer;
+            }
+
+            div[data-testid="column"]:hover .risk-card {
+                background: rgba(255,255,255,0.08) !important;
+                border-color: rgba(255,255,255,0.3) !important;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            }
+
+            .risk-card.selected {
+                border-width: 2.5px !important;
+                transform: translateY(-2px);
+            }
+
+            .risk-card-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 8px;
+                transition: transform 0.2s ease;
+            }
+
+            div[data-testid="column"]:hover .risk-card-icon {
+                transform: scale(1.1);
+            }
+
+            .risk-card-name {
+                font-size: 12.5px;
+                font-weight: 700;
+                color: #eee;
+                line-height: 1.25;
+                margin-bottom: 5px;
+            }
+
+            .risk-card-level {
+                font-size: 11px;
+                font-weight: 900;
+                letter-spacing: 0.8px;
+                margin-bottom: 8px;
+                text-transform: uppercase;
+            }
+
+            .risk-card-formula {
+                font-size: 10.5px;
+                color: #aaa;
+                background: rgba(0,0,0,0.20);
+                padding: 3px 6px;
+                border-radius: 4px;
+                border: 1px solid rgba(255,255,255,0.05);
+            }
+
+            .risk-card-sel {
+                font-size: 9px;
+                font-weight: 900;
+                margin-top: 8px;
+                letter-spacing: 0.5px;
+                animation: pulse_sel 2s infinite;
+            }
+
+            @keyframes pulse_sel {
+                0% { opacity: 0.6; }
+                50% { opacity: 1; }
+                100% { opacity: 0.6; }
+            }
+
+            div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] {
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                z-index: 10 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button {
+                width: 100% !important;
+                height: 100% !important;
+                background: transparent !important;
+                border: none !important;
+                color: transparent !important;
+                box-shadow: none !important;
+                cursor: pointer !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+        
+            div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:hover,
+            div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:focus,
+            div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:active {
+                background: transparent !important;
+                border: none !important;
+                color: transparent !important;
+                box-shadow: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f'Los valores de cada grupo se calculan aplicando su **factor de sensibilidad** '
+            f'sobre el ICA general multicontaminante (**{ica_general_base:.0f}**):'
+        )
+        resumen = get_all_groups_summary(ica_general_base)
+        cols = st.columns(len(resumen))
+        for i, r in enumerate(resumen):
+            with cols[i]:
+                c_hex = r['nivel']['color']
+                g_id = r['id']
+                g_info = RISK_GROUPS[g_id]
+                factor = g_info["factor_sensibilidad"]
+                is_selected = (g_id == st.session_state["grupo_seleccionado"])
+                border_w = "2.5px" if is_selected else "1px"
+                bg_op = "25" if is_selected else "08"
+                shadow = f"0 0 15px {c_hex}44" if is_selected else "none"
+                sel_label = "● SELECCIONADO" if is_selected else ""
+                sel_style = f"font-weight:900; color:{c_hex};" if is_selected else ""
+                svg_icon = g_info["icono"]
+
+                # Tarjeta visual interactiva en HTML
+                st.markdown(f"""
+                <div class="risk-card {"selected" if is_selected else ""}" 
+                     style="border-color: {c_hex}; background: {c_hex}{bg_op}; box-shadow: {shadow};">
+                    <div class="risk-card-icon" style="color: {c_hex};">{svg_icon}</div>
+                    <div class="risk-card-name">{r['nombre']}</div>
+                    <div class="risk-card-level" style="color: {c_hex};">{r['nivel']['nombre']}</div>
+                    <div class="risk-card-formula">
+                        {ica_general_base:.0f} × {factor:.1f} = <b style="color: #eee;">{r['ica_efectivo']:.0f}</b>
+                    </div>
+                    {"<div class='risk-card-sel' style='" + sel_style + "'>" + sel_label + "</div>" if is_selected else ""}
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Botón de Streamlit transparente que cubre toda la tarjeta
+                st.button(
+                    f"Seleccionar {r['nombre']}",
+                    key=f"btn_grupo_{g_id}",
+                    on_click=_seleccionar_grupo,
+                    args=(g_id,),
+                )
+
+        # ---- Panel de detalle para el grupo seleccionado ----
+        st.markdown("---")
+        _sel_id = st.session_state["grupo_seleccionado"]
+        _sel_info = RISK_GROUPS[_sel_id]
+        _sel_factor = _sel_info["factor_sensibilidad"]
+        _sel_ica_eff = ica_general_base * _sel_factor
+        _sel_recs = get_recomendaciones(ica_general_base, [_sel_id])
+        _sel_nivel = _sel_recs["nivel"]
+        _sel_color = _sel_nivel["color"]
+        _sel_recomendaciones = _sel_recs["recomendaciones"]
+
+        # Cabecera de recomendaciones usando el mismo SVG
+        st.markdown(
+            f'<h3 style="display:flex; align-items:center; gap:10px; margin-top:20px; font-size: 1.4rem; font-weight: 700;">'
+            f'<span style="color:{_sel_color}; display:inline-flex; align-items:center; width:28px; height:28px;">{_sel_info["icono"]}</span>'
+            f'Recomendaciones para: <span style="color:{_sel_color}; margin-left:4px;">{_sel_info["nombre"]}</span>'
+            f'</h3>',
+            unsafe_allow_html=True
+        )
+    
+        st.markdown(
+            f'<div style="display:inline-flex; align-items:center; gap:12px; '
+            f'background:rgba(255,255,255,0.04); '
+            f'border:1.5px solid {_sel_color}; border-radius:8px; padding:10px 16px; '
+            f'font-size:13.5px; margin-bottom:16px; flex-wrap:wrap; box-shadow: 0 2px 10px rgba(0,0,0,0.2);">'
+            f'<span style="color:#bbb; font-weight: 500;">ICA base general:</span> '
+            f'<span style="font-size:18px; font-weight:800; color:#eee;">{ica_general_base:.0f}</span> '
+            f'<span style="color:#777; font-weight: 800;">×</span> '
+            f'<span style="font-size:14px; font-weight:500; color:#999;">Factor de sensibilidad (</span>'
+            f'<span style="font-size:16px; font-weight:700; color:{_sel_info["color"]};">{_sel_factor:.1f}</span>'
+            f'<span style="font-size:14px; font-weight:500; color:#999;">)</span> '
+            f'<span style="color:#777; font-weight: 800;">=</span> '
+            f'<span style="font-size:14px; font-weight:500; color:#999;">ICA efectivo percibido: </span>'
+            f'<span style="font-size:18px; font-weight:800; color:{_sel_color};">{_sel_ica_eff:.0f}</span> '
+            f'<span style="background:{_sel_color}22; color:{_sel_color}; padding:2px 8px; '
+            f'border-radius:4px; font-weight:800; font-size:11px; text-transform: uppercase; border: 1px solid {_sel_color}44; margin-left: 8px;">{_sel_nivel["nombre"]}</span>'
+            f'</div>',
             unsafe_allow_html=True,
         )
+
+        # Iconos SVG limpios para cada categoría de recomendación
+        RECOMMENDATION_SVGs = {
+            "actividad_exterior": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2z"/><path d="M8 6h8"/><path d="M8 10h8"/><path d="M8 14h8"/><path d="M8 18h8"/></svg>""",
+            "ejercicio": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="5" r="2"/><path d="M9 9l3 2 1-3 3.5 2M5 12h4l2 5v4M13 14l-2 5H7"/></svg>""",
+            "cubrebocas": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>""",
+            "ventilacion": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>""",
+            "transporte": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>""",
+            "alerta_medica": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>""",
+        }
+        _rec_labels = {
+            "actividad_exterior": "Actividad exterior",
+            "ejercicio": "Ejercicio",
+            "cubrebocas": "Cubrebocas",
+            "ventilacion": "Ventilación",
+            "transporte": "Transporte",
+            "alerta_medica": "Alerta médica",
+        }
+        for cat_key, cat_text in _sel_recomendaciones.items():
+            if cat_text is None:
+                continue
+            icon_svg = RECOMMENDATION_SVGs.get(cat_key, "📋")
+            label = _rec_labels.get(cat_key, cat_key)
+            st.markdown(
+                f'<div style="border-left: 4px solid {_sel_color}; padding: 8px 12px; '
+                f'margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 0 8px 8px 0;'
+                f'border-top: 1px solid rgba(255,255,255,0.01); border-right: 1px solid rgba(255,255,255,0.01); border-bottom: 1px solid rgba(255,255,255,0.01);">'
+                f'<span style="font-size:14px; display:flex; align-items:center; gap:8px; color:#eee; font-weight:700;">'
+                f'<span style="color:{_sel_color}; display:inline-flex; align-items:center;">{icon_svg}</span>'
+                f'{label}</span>'
+                f'<span style="font-size:13px; color:#bbb; display:block; margin-top:4px; line-height:1.5;">{cat_text}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+render_risk_groups(ica_general_base)
+
 
 # Se eliminó la sección "¿Qué hacer ahora?" por duplicidad
 

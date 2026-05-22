@@ -89,7 +89,7 @@ from landuse import (
     LUSE_ZONA_ABIERTA, LUSE_ZONA_AGUA, LUSE_ZONA_INDUSTRIAL,
     fetch_osm_landuse,
 )
-from risk_profiles import RISK_GROUPS, get_all_groups_summary
+from risk_profiles import RISK_GROUPS, get_all_groups_summary, get_recomendaciones
 
 
 # =====================================================================
@@ -190,15 +190,15 @@ def calcular_icas_multicontaminante(hora, viento_ms, viento_dir,
                                      temperatura, presion, factor_trafico,
                                      factor_industrial, inversion,
                                      es_dia_laboral, usar_osm):
-    """Calcula ICA máximo de PM2.5, PM10 y NO2 en paralelo."""
+    """Calcula ICA máximo de PM2.5, PM10, NO2 y SO2 en paralelo."""
     grid, mask, _ = cargar_grid_y_infra()
     roads = cargar_red_vial(usar_osm)
     icas = {}
     
     # Dejar al menos 1 core libre (o usar un maximo del 90%)
-    max_w = max(1, int(os.cpu_count() * 0.90)) if os.cpu_count() else 3
-    # Necesitamos como mucho 3 hilos aquí
-    max_w = min(max_w, 3)
+    max_w = max(1, int(os.cpu_count() * 0.90)) if os.cpu_count() else 4
+    # Necesitamos como mucho 4 hilos aquí
+    max_w = min(max_w, 4)
     
     def calc_single(cont):
         res = simular_con_trafico(
@@ -214,7 +214,7 @@ def calcular_icas_multicontaminante(hora, viento_ms, viento_dir,
         return cont, float(res["ica"][mask].max())
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
-        futuros = [executor.submit(calc_single, c) for c in ["PM2.5", "PM10", "NOx"]]
+        futuros = [executor.submit(calc_single, c) for c in ["PM2.5", "PM10", "NOx", "SO2"]]
         for futuro in concurrent.futures.as_completed(futuros):
             cont, val = futuro.result()
             icas[cont] = val
@@ -964,6 +964,13 @@ MODO_ESCENARIO  = "Escenario hipotético"
 if "alto_contraste" not in st.session_state:
     st.session_state["alto_contraste"] = False
 
+# Inicializar y gestionar grupo de riesgo seleccionado
+if "grupo_seleccionado" not in st.session_state:
+    st.session_state["grupo_seleccionado"] = "GENERAL"
+
+grupos_riesgo = [st.session_state["grupo_seleccionado"]]
+
+
 with st.sidebar:
     st.header("Panel de control")
 
@@ -980,24 +987,6 @@ with st.sidebar:
              "facilitando ver el movimiento de la pluma con el viento.",
     )
     alto_contraste = st.session_state["alto_contraste"]
-
-    st.markdown("---")
-    
-    st.markdown("### Perfil de Riesgo")
-    opciones_riesgo = list(RISK_GROUPS.keys())
-    def formato_opcion(k):
-        info = RISK_GROUPS[k]
-        return f"{info['icono']} {info['nombre']}"
-        
-    grupos_riesgo = st.multiselect(
-        "Selecciona tus condiciones (puedes elegir varias):",
-        opciones_riesgo,
-        default=["GENERAL"],
-        format_func=formato_opcion,
-        help="El sistema ajustará las recomendaciones y umbrales de ICA según el grupo más sensible seleccionado."
-    )
-    if not grupos_riesgo:
-        grupos_riesgo = ["GENERAL"]
 
     st.markdown("---")
 
@@ -1260,7 +1249,7 @@ st.markdown(
       <div style="font-size: 16px; font-weight: 700; color: {_borde};">
           {modo}
       </div>
-      <div style="font-size: 13px; color: #444; margin-top: 2px;">
+      <div style="font-size: 13px; color: #bbb; margin-top: 2px;">
           {_ts} · {_sub}
       </div>
     </div>
@@ -1269,7 +1258,7 @@ st.markdown(
 )
 
 
-# --- Alerta principal (color-coded por nivel ICA y desglose de contaminantes) ---
+# --- Alerta General Multicontaminante (siempre usa los 4, independiente del filtro) ---
 icas_maximos_todos = calcular_icas_multicontaminante(
     hora=hora, viento_ms=viento_ms, viento_dir=viento_dir,
     temperatura=temperatura, presion=presion,
@@ -1278,42 +1267,70 @@ icas_maximos_todos = calcular_icas_multicontaminante(
     inversion=inversion,
     es_dia_laboral=es_dia_laboral, usar_osm=usar_osm,
 )
-
 resumen_multicontaminante = alerta_general_multicontaminante(icas_maximos_todos)
-alert = resumen_multicontaminante["alerta_general"]
-ica_max_general = resumen_multicontaminante["ica_max_general"]
 contaminante_principal = resumen_multicontaminante["contaminante_principal"]
+# Este es el ICA base general (máx de TODOS los contaminantes, sin multiplicador)
+ica_general_base = resumen_multicontaminante["ica_max_general"]
 
-# Construir HTML para el desglose de contaminantes
-html_desglose = '<div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">'
+# Alerta general: siempre usa el ICA base sin multiplicador de grupo
+alert = generate_alert(ica_general_base, ica_general_base)
+
+# Paleta de colores adaptada a fondo oscuro (menos saturados, mejor contraste)
+_ALERT_DARK_COLORS = {
+    "BUENA":      ("rgba(46, 160, 67, 0.12)",  "#22863a", "#a6f0b4"),
+    "ACEPTABLE":  ("rgba(212, 160, 23, 0.10)",  "#b08010", "#fae8ab"),
+    "MODERADO":   ("rgba(207, 138, 46, 0.12)",  "#a66b1e", "#fcd4a5"),
+    "ALTO":       ("rgba(200, 64, 64, 0.12)",   "#a63232", "#ffb3b3"),
+    "EMERGENCIA": ("rgba(142, 36, 170, 0.15)",  "#7a1a8c", "#f2bdfa"),
+}
+_a_bg, _a_border, _a_fg = _ALERT_DARK_COLORS.get(
+    alert["nivel"], ("rgba(100,100,100,0.15)", "#666", "#ddd")
+)
+
+# Desglose de contaminantes: valores RAW (sin multiplicador) como referencia general
+html_desglose = '<div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">'
 for item in resumen_multicontaminante["desglose"]:
+    ica_raw = item['ica']
+    cat_raw = item['categoria']
+    # Color suave y desaturado para cada contaminante
+    _cont_colors = {
+        "Buena": "#2ea043", "Aceptable": "#c49b1c",
+        "Mala": "#b57a26", "Muy Mala": "#a63232",
+        "Extremadamente Mala": "#7a1a8c", "Peligrosa": "#520c24",
+    }
+    c_cont = _cont_colors.get(cat_raw, "#888")
     html_desglose += f"""
-    <div style="background: rgba(255,255,255,0.8); padding: 8px 12px; border-radius: 6px; 
-                border-left: 4px solid {item['color']}; flex: 1; min-width: 100px;">
-        <div style="font-size: 12px; color: #555; font-weight: bold;">{item['contaminante']}</div>
-        <div style="font-size: 16px; font-weight: 800; color: #111;">{item['ica']}</div>
-        <div style="font-size: 11px; color: {item['color']}; display: flex; align-items: center; gap: 4px;">
-            {item['icono'].replace('width="18"', 'width="12"').replace('height="18"', 'height="12"')} {item['categoria']}
-        </div>
+    <div style="background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px;
+                border-left: 4px solid {c_cont}; border-top: 1px solid rgba(255,255,255,0.02);
+                border-right: 1px solid rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.02);
+                flex: 1; min-width: 100px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);">
+        <div style="font-size: 11px; color: #888; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">{item['contaminante']}</div>
+        <div style="font-size: 19px; font-weight: 800; color: #eee; margin: 2px 0;">{ica_raw:.0f}</div>
+        <div style="font-size: 11px; color: {c_cont}; font-weight: 700;">{cat_raw}</div>
     </div>
     """
 html_desglose += '</div>'
 
 st.markdown(
     f"""
-    <div style="background-color:{alert['color']}; padding:18px 24px;
-                border-radius:10px; color:#1a1a1a; margin-bottom:10px;
-                border: 2px solid rgba(0,0,0,0.35);">
-        <div style="display:flex; justify-content:space-between; align-items:baseline;">
-          <div style="font-size:22px; font-weight:800; display:flex; align-items:center; gap:8px;">
+    <div style="background:{_a_bg}; padding:20px 24px;
+                border-radius:12px; color:{_a_fg}; margin-bottom:12px;
+                border: 1.5px solid {_a_border};
+                box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+                backdrop-filter: blur(8px);">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap: wrap;">
+          <div style="font-size:22px; font-weight:800; display:flex; align-items:center; gap:8px; letter-spacing:-0.3px;">
               {alert['icono']} Alerta General: {alert['nivel']}
           </div>
-          <div style="font-size:14px; opacity:0.85;">
-              Principal: {contaminante_principal} (máx {ica_max_general:.0f})
+          <div style="font-size:13.5px; opacity:0.85; font-weight: 600;">
+              Peor: {contaminante_principal} · ICA {ica_general_base:.0f}
           </div>
         </div>
-        <div style="font-size:14px; margin-top:6px; line-height:1.5;">
+        <div style="font-size:14px; margin-top:8px; line-height:1.6; opacity:0.9; color: #e5e5e5;">
             {alert['mensaje']}
+        </div>
+        <div style="font-size:10.5px; margin-top:10px; opacity:0.5; font-weight: 500;">
+            Valores generales basados en {len(icas_maximos_todos)} contaminantes simultáneos (independiente del filtro seleccionado)
         </div>
         {html_desglose}
     </div>
@@ -1355,27 +1372,262 @@ acciones = recomendaciones_de_accion(
     ica_max_val, ica_med_val, factores, pico_proximas, grupos_riesgo=grupos_riesgo
 )
 
-# Mostrar acciones recomendadas
-with st.expander("**¿Qué hacer ahora?**", expanded=True):
-    for a in acciones:
-        st.markdown(f"{a}", unsafe_allow_html=True)
-    st.markdown(f"**Cubrebocas**: {mask_recommendation(ica_max_val, grupos_riesgo)}", unsafe_allow_html=True)
+# ----------------------------------------------------------------
+# Panel de grupos de riesgo: las tarjetas SON los botones
+# Los grupos MULTIPLICAN el ICA general (multicontaminante)
+# ----------------------------------------------------------------
+def _seleccionar_grupo(g_id):
+    """Callback para cambiar el grupo seleccionado."""
+    st.session_state["grupo_seleccionado"] = g_id
 
-with st.expander("**Estado por Grupos de Riesgo**", expanded=False):
-    st.markdown("Visión general de impacto según perfil (basado en el ICA máximo actual):")
-    resumen = get_all_groups_summary(ica_max_val)
+with st.expander("**Estado por Grupos de Riesgo**", expanded=True):
+    # Marker element to anchor the CSS selector
+    st.markdown('<div class="risk-group-marker" style="display:none;"></div>', unsafe_allow_html=True)
+
+    # CSS injection for custom risk cards styling and overlaying invisible Streamlit buttons
+    st.markdown(
+        """
+        <style>
+        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] {
+            position: relative !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        .risk-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 16px 12px;
+            border-radius: 10px;
+            border: 1.5px solid rgba(255,255,255,0.12);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 180px;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+            background: rgba(255,255,255,0.03);
+            cursor: pointer;
+        }
+
+        div[data-testid="column"]:hover .risk-card {
+            background: rgba(255,255,255,0.08) !important;
+            border-color: rgba(255,255,255,0.3) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .risk-card.selected {
+            border-width: 2.5px !important;
+            transform: translateY(-2px);
+        }
+
+        .risk-card-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 8px;
+            transition: transform 0.2s ease;
+        }
+
+        div[data-testid="column"]:hover .risk-card-icon {
+            transform: scale(1.1);
+        }
+
+        .risk-card-name {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #eee;
+            line-height: 1.25;
+            margin-bottom: 5px;
+        }
+
+        .risk-card-level {
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.8px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        .risk-card-formula {
+            font-size: 10.5px;
+            color: #aaa;
+            background: rgba(0,0,0,0.20);
+            padding: 3px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .risk-card-sel {
+            font-size: 9px;
+            font-weight: 900;
+            margin-top: 8px;
+            letter-spacing: 0.5px;
+            animation: pulse_sel 2s infinite;
+        }
+
+        @keyframes pulse_sel {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: 10 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button {
+            width: 100% !important;
+            height: 100% !important;
+            background: transparent !important;
+            border: none !important;
+            color: transparent !important;
+            box-shadow: none !important;
+            cursor: pointer !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        
+        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:hover,
+        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:focus,
+        div:has(> div > .risk-group-marker) ~ div[data-testid="stHorizontalBlock"] div[data-testid="column"] div[data-testid="stButton"] button:active {
+            background: transparent !important;
+            border: none !important;
+            color: transparent !important;
+            box-shadow: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f'Los valores de cada grupo se calculan aplicando su **factor de sensibilidad** '
+        f'sobre el ICA general multicontaminante (**{ica_general_base:.0f}**):'
+    )
+    resumen = get_all_groups_summary(ica_general_base)
     cols = st.columns(len(resumen))
     for i, r in enumerate(resumen):
         with cols[i]:
             c_hex = r['nivel']['color']
+            g_id = r['id']
+            g_info = RISK_GROUPS[g_id]
+            factor = g_info["factor_sensibilidad"]
+            is_selected = (g_id == st.session_state["grupo_seleccionado"])
+            border_w = "2.5px" if is_selected else "1px"
+            bg_op = "25" if is_selected else "08"
+            shadow = f"0 0 15px {c_hex}44" if is_selected else "none"
+            sel_label = "● SELECCIONADO" if is_selected else ""
+            sel_style = f"font-weight:900; color:{c_hex};" if is_selected else ""
+            svg_icon = g_info["icono"]
+
+            # Tarjeta visual interactiva en HTML
             st.markdown(f"""
-            <div style="text-align: center; background: {c_hex}22; padding: 10px; border-radius: 8px; border: 1px solid {c_hex}; height: 100%;">
-                <div style="font-size: 24px;">{r['icono']}</div>
-                <div style="font-size: 11px; font-weight: bold; margin-top: 4px;">{r['nombre']}</div>
-                <div style="font-size: 13px; color: {c_hex}; font-weight: 800; margin-top: 4px;">{r['nivel']['nombre']}</div>
-                <div style="font-size: 10px; color: #666; margin-top: 2px;">ICA ef: {r['ica_efectivo']:.0f}</div>
+            <div class="risk-card {"selected" if is_selected else ""}" 
+                 style="border-color: {c_hex}; background: {c_hex}{bg_op}; box-shadow: {shadow};">
+                <div class="risk-card-icon" style="color: {c_hex};">{svg_icon}</div>
+                <div class="risk-card-name">{r['nombre']}</div>
+                <div class="risk-card-level" style="color: {c_hex};">{r['nivel']['nombre']}</div>
+                <div class="risk-card-formula">
+                    {ica_general_base:.0f} × {factor:.1f} = <b style="color: #eee;">{r['ica_efectivo']:.0f}</b>
+                </div>
+                {"<div class='risk-card-sel' style='" + sel_style + "'>" + sel_label + "</div>" if is_selected else ""}
             </div>
             """, unsafe_allow_html=True)
+
+            # Botón de Streamlit transparente que cubre toda la tarjeta
+            st.button(
+                f"Seleccionar {r['nombre']}",
+                key=f"btn_grupo_{g_id}",
+                on_click=_seleccionar_grupo,
+                args=(g_id,),
+            )
+
+    # ---- Panel de detalle para el grupo seleccionado ----
+    st.markdown("---")
+    _sel_id = st.session_state["grupo_seleccionado"]
+    _sel_info = RISK_GROUPS[_sel_id]
+    _sel_factor = _sel_info["factor_sensibilidad"]
+    _sel_ica_eff = ica_general_base * _sel_factor
+    _sel_recs = get_recomendaciones(ica_general_base, [_sel_id])
+    _sel_nivel = _sel_recs["nivel"]
+    _sel_color = _sel_nivel["color"]
+    _sel_recomendaciones = _sel_recs["recomendaciones"]
+
+    # Cabecera de recomendaciones usando el mismo SVG
+    st.markdown(
+        f'<h3 style="display:flex; align-items:center; gap:10px; margin-top:20px; font-size: 1.4rem; font-weight: 700;">'
+        f'<span style="color:{_sel_color}; display:inline-flex; align-items:center; width:28px; height:28px;">{_sel_info["icono"]}</span>'
+        f'Recomendaciones para: <span style="color:{_sel_color}; margin-left:4px;">{_sel_info["nombre"]}</span>'
+        f'</h3>',
+        unsafe_allow_html=True
+    )
+    
+    st.markdown(
+        f'<div style="display:inline-flex; align-items:center; gap:12px; '
+        f'background:rgba(255,255,255,0.04); '
+        f'border:1.5px solid {_sel_color}; border-radius:8px; padding:10px 16px; '
+        f'font-size:13.5px; margin-bottom:16px; flex-wrap:wrap; box-shadow: 0 2px 10px rgba(0,0,0,0.2);">'
+        f'<span style="color:#bbb; font-weight: 500;">ICA base general:</span> '
+        f'<span style="font-size:18px; font-weight:800; color:#eee;">{ica_general_base:.0f}</span> '
+        f'<span style="color:#777; font-weight: 800;">×</span> '
+        f'<span style="font-size:14px; font-weight:500; color:#999;">Factor de sensibilidad (</span>'
+        f'<span style="font-size:16px; font-weight:700; color:{_sel_info["color"]};">{_sel_factor:.1f}</span>'
+        f'<span style="font-size:14px; font-weight:500; color:#999;">)</span> '
+        f'<span style="color:#777; font-weight: 800;">=</span> '
+        f'<span style="font-size:14px; font-weight:500; color:#999;">ICA efectivo percibido: </span>'
+        f'<span style="font-size:18px; font-weight:800; color:{_sel_color};">{_sel_ica_eff:.0f}</span> '
+        f'<span style="background:{_sel_color}22; color:{_sel_color}; padding:2px 8px; '
+        f'border-radius:4px; font-weight:800; font-size:11px; text-transform: uppercase; border: 1px solid {_sel_color}44; margin-left: 8px;">{_sel_nivel["nombre"]}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Iconos SVG limpios para cada categoría de recomendación
+    RECOMMENDATION_SVGs = {
+        "actividad_exterior": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 22H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2z"/><path d="M8 6h8"/><path d="M8 10h8"/><path d="M8 14h8"/><path d="M8 18h8"/></svg>""",
+        "ejercicio": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="5" r="2"/><path d="M9 9l3 2 1-3 3.5 2M5 12h4l2 5v4M13 14l-2 5H7"/></svg>""",
+        "cubrebocas": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>""",
+        "ventilacion": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>""",
+        "transporte": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>""",
+        "alerta_medica": """<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>""",
+    }
+    _rec_labels = {
+        "actividad_exterior": "Actividad exterior",
+        "ejercicio": "Ejercicio",
+        "cubrebocas": "Cubrebocas",
+        "ventilacion": "Ventilación",
+        "transporte": "Transporte",
+        "alerta_medica": "Alerta médica",
+    }
+    for cat_key, cat_text in _sel_recomendaciones.items():
+        if cat_text is None:
+            continue
+        icon_svg = RECOMMENDATION_SVGs.get(cat_key, "📋")
+        label = _rec_labels.get(cat_key, cat_key)
+        st.markdown(
+            f'<div style="border-left: 4px solid {_sel_color}; padding: 8px 12px; '
+            f'margin-bottom: 8px; background: rgba(255,255,255,0.03); border-radius: 0 8px 8px 0;'
+            f'border-top: 1px solid rgba(255,255,255,0.01); border-right: 1px solid rgba(255,255,255,0.01); border-bottom: 1px solid rgba(255,255,255,0.01);">'
+            f'<span style="font-size:14px; display:flex; align-items:center; gap:8px; color:#eee; font-weight:700;">'
+            f'<span style="color:{_sel_color}; display:inline-flex; align-items:center;">{icon_svg}</span>'
+            f'{label}</span>'
+            f'<span style="font-size:13px; color:#bbb; display:block; margin-top:4px; line-height:1.5;">{cat_text}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+# Se eliminó la sección "¿Qué hacer ahora?" por duplicidad
+
 
 
 # ----------------------------------------------------------------
@@ -1402,7 +1654,7 @@ with st.expander("**Explicación de las condiciones**", expanded=True):
                     {f['icono']} <b>{f['etiqueta']}</b>:&nbsp;
                     <span style="color:{c};"><b>{f['valor']}</b></span>
                   </span>
-                  <div style="font-size: 12px; color: #555; margin-top: 2px;">
+                  <div style="font-size: 12px; color: #aaa; margin-top: 2px;">
                     {f['mensaje']}
                   </div>
                 </div>
@@ -1422,7 +1674,7 @@ with st.expander("**Explicación de las condiciones**", expanded=True):
                     f"""
                     <div style="margin-bottom: 5px;">
                       <div style="display:flex; justify-content:space-between;
-                                  font-size:12px; color:#333;">
+                                  font-size:12px; color:#ccc;">
                         <span><b>{etiqueta}</b></span>
                         <span><b>{f['ica_max']:.0f}</b> {cat_f}</span>
                       </div>
@@ -1560,7 +1812,7 @@ with tab_mapa:
               <div style="display:flex; flex-wrap:wrap; margin-top:8px;">
                 {leyenda_items}
               </div>
-              <div style="margin-top:4px; font-size:12px; color:#555;">
+              <div style="margin-top:4px; font-size:12px; color:#aaa;">
                 Las celdas de <b>vías y vacío</b> no se colorean (transparentes). Activa la capa en el control superior derecho del mapa.
               </div>
             </div>
@@ -1616,7 +1868,7 @@ with tab_animacion:
           <div style="font-size: 15px; font-weight: 700; color: #6c5ce7;">
               ILUSTRATIVO · transitorio físico
           </div>
-          <div style="font-size: 13px; color: #444;">
+          <div style="font-size: 13px; color: #bbb;">
               Parte de aire limpio y muestra cómo se construye y mueve la
               pluma con el viento. No es una predicción de momento concreto;
               es una visualización del comportamiento físico.
@@ -1807,7 +2059,7 @@ with tab_evolucion:
           <div style="font-size: 15px; font-weight: 700; color: #a8551a;">
               EXPLORATORIO · día tipo (24h)
           </div>
-          <div style="font-size: 13px; color: #444;">
+          <div style="font-size: 13px; color: #bbb;">
               Simula un día completo bajo las condiciones meteorológicas
               configuradas. Útil para ver cómo el flujo vehicular construye
               el ciclo diario de contaminación.
@@ -1954,7 +2206,7 @@ with tab_pronostico:
           <div style="font-size: 15px; font-weight: 700; color: #1c5b9f;">
               PREDICCIÓN · próximas 12 horas
           </div>
-          <div style="font-size: 13px; color: #444;">
+          <div style="font-size: 13px; color: #bbb;">
               Combina el pronóstico meteorológico de Open-Meteo con el modelo
               de tráfico y emisiones para anticipar la calidad del aire.
           </div>
@@ -2047,14 +2299,14 @@ with tab_pronostico:
                             background: rgba(0,0,0,0.025);
                             border-radius: 4px;">
                     <div style="min-width: 110px; font-weight: 600;
-                                color: #333;">{hora_fmt}</div>
+                                color: #eee;">{hora_fmt}</div>
                     <div style="min-width: 130px;">
                         {r['icono']} <b>ICA {r['ica_max']:.0f}</b>
-                        <span style="color:#666; font-size:12px;">
+                        <span style="color:#aaa; font-size:12px;">
                           ({r['categoria']})
                         </span>
                     </div>
-                    <div style="flex:1; color:#222;">{r['accion']}</div>
+                    <div style="flex:1; color:#ccc;">{r['accion']}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -2331,8 +2583,7 @@ with tab_info:
         Se resuelve la **ecuación de advección–difusión 2D** sobre una rejilla
         regular de **15 m × 15 m**:
 
-        $$\frac{\partial C}{\partial t} = -u\frac{\partial C}{\partial x}
-        - v\frac{\partial C}{\partial y} + D\,\nabla^2 C + S(x,y) - k\,C$$
+        $$\frac{\partial C}{\partial t} = -u\frac{\partial C}{\partial x} - v\frac{\partial C}{\partial y} + D\,\nabla^2 C + S(x,y) - k\,C$$
 
         donde:
         - $C$ = concentración del contaminante (μg/m³)
@@ -2364,9 +2615,7 @@ with tab_info:
         #### 🚗 Modelo de flujo vehicular
         Para cada celda de 15 × 15 m por la que pasa una vialidad:
 
-        $$E_{\text{celda}} \;\left[\frac{\mu g}{m^3 \cdot s}\right] =
-        \frac{Q\;\text{[veh/h]} \cdot FE\;[g/km] \cdot \Delta x\;[km]
-        \cdot 10^6}{3600 \cdot \Delta x^2 \cdot H_{mix}}$$
+        $$E_{\text{celda}} \;\left[\frac{\mu g}{m^3 \cdot s}\right] = \frac{Q\;\text{[veh/h]} \cdot FE\;[g/km] \cdot \Delta x\;[km] \cdot 10^6}{3600 \cdot \Delta x^2 \cdot H_{mix}}$$
 
         donde $Q$ varía hora a hora con el perfil:
         - 3 AM:   2 % de la capacidad

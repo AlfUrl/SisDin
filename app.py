@@ -124,23 +124,18 @@ def cargar_landuse(usar_osm: bool):
     return build_landuse_map(grid, zonas=zonas)
 
 
-@st.cache_data(show_spinner="Calculando dispersión con tráfico…")
 def simular_snapshot(hora, contaminante, viento_ms, viento_dir,
                      temperatura, presion, factor_trafico, factor_industrial,
                      inversion, es_dia_laboral, usar_osm):
-    grid, _, _ = cargar_grid_y_infra()
-    roads = cargar_red_vial(usar_osm)
-    res = simular_con_trafico(
-        grid, roads,
-        hora=hora, contaminante=contaminante,
-        viento_ms=viento_ms, viento_dir=viento_dir,
+    resultados_todos = simular_todos_multicontaminante(
+        hora=hora, viento_ms=viento_ms, viento_dir=viento_dir,
         temperatura=temperatura, presion=presion,
         factor_trafico=factor_trafico,
         factor_industrial=factor_industrial,
-        inversion_termica=inversion,
-        es_dia_laboral=es_dia_laboral,
+        inversion=inversion,
+        es_dia_laboral=es_dia_laboral, usar_osm=usar_osm,
     )
-    return res
+    return resultados_todos[contaminante]
 
 
 @st.cache_data(show_spinner="Simulando evolución 24h…")
@@ -185,15 +180,15 @@ def simular_animacion_cached(hora, contaminante, viento_ms, viento_dir,
     )
 
 
-@st.cache_data(show_spinner="Evaluando alerta multicontaminante…")
-def calcular_icas_multicontaminante(hora, viento_ms, viento_dir,
+@st.cache_data(show_spinner="Simulando todos los contaminantes en paralelo…")
+def simular_todos_multicontaminante(hora, viento_ms, viento_dir,
                                      temperatura, presion, factor_trafico,
                                      factor_industrial, inversion,
                                      es_dia_laboral, usar_osm):
-    """Calcula ICA máximo de PM2.5, PM10, NO2 y SO2 en paralelo."""
+    """Calcula la simulación completa de PM2.5, PM10, NO2 y SO2 en paralelo."""
     grid, mask, _ = cargar_grid_y_infra()
     roads = cargar_red_vial(usar_osm)
-    icas = {}
+    resultados = {}
     
     # Dejar al menos 1 core libre (o usar un maximo del 90%)
     max_w = max(1, int(os.cpu_count() * 0.90)) if os.cpu_count() else 4
@@ -211,15 +206,15 @@ def calcular_icas_multicontaminante(hora, viento_ms, viento_dir,
             inversion_termica=inversion,
             es_dia_laboral=es_dia_laboral,
         )
-        return cont, float(res["ica"][mask].max())
+        return cont, res
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
         futuros = [executor.submit(calc_single, c) for c in ["PM2.5", "PM10", "NOx", "SO2"]]
         for futuro in concurrent.futures.as_completed(futuros):
-            cont, val = futuro.result()
-            icas[cont] = val
+            cont, res = futuro.result()
+            resultados[cont] = res
 
-    return icas
+    return resultados
 
 
 @st.cache_data(show_spinner="Calculando pronóstico de las próximas horas…")
@@ -1259,7 +1254,7 @@ st.markdown(
 
 
 # --- Alerta General Multicontaminante (siempre usa los 4, independiente del filtro) ---
-icas_maximos_todos = calcular_icas_multicontaminante(
+resultados_todos = simular_todos_multicontaminante(
     hora=hora, viento_ms=viento_ms, viento_dir=viento_dir,
     temperatura=temperatura, presion=presion,
     factor_trafico=factor_trafico_efectivo,
@@ -1267,6 +1262,7 @@ icas_maximos_todos = calcular_icas_multicontaminante(
     inversion=inversion,
     es_dia_laboral=es_dia_laboral, usar_osm=usar_osm,
 )
+icas_maximos_todos = {cont: float(res["ica"][mask].max()) for cont, res in resultados_todos.items()}
 resumen_multicontaminante = alerta_general_multicontaminante(icas_maximos_todos)
 contaminante_principal = resumen_multicontaminante["contaminante_principal"]
 # Este es el ICA base general (máx de TODOS los contaminantes, sin multiplicador)

@@ -120,8 +120,6 @@ DEFAULT_ROADS = [
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.openstreetmap.ru/api/interpreter",
 ]
 
 # Algunos mirrors rechazan peticiones sin User-Agent identificable.
@@ -170,7 +168,7 @@ def fetch_osm_roads(bounds: dict, buffer_deg: float = 0.003) -> list[dict]:
                 endpoint,
                 data={"data": query},
                 headers=_OVERPASS_HEADERS,
-                timeout=30,
+                timeout=12,
             )
             r.raise_for_status()
             data = r.json()
@@ -353,17 +351,15 @@ INDUSTRIAL_EMISSION_FACTORS = {  # μg/m³/s por celda industrial
 
 def industrial_emissions(grid, lat_range, lon_range, contaminante,
                          factor: float = 1.0) -> np.ndarray:
-    """Matriz de emisiones de una fuente fija de área (planta industrial)."""
+    """Matriz de emisiones de una fuente fija de área (planta industrial).
+
+    Vectorizado con NumPy para evitar loops Python.
+    """
     E = np.zeros((grid["filas"], grid["columnas"]), dtype=np.float32)
     base = INDUSTRIAL_EMISSION_FACTORS.get(contaminante, 0.1) * factor
-    for i in range(grid["filas"]):
-        lat = grid["lat_grid"][i]
-        if not (lat_range[0] <= lat <= lat_range[1]):
-            continue
-        for j in range(grid["columnas"]):
-            lon = grid["lon_grid"][j]
-            if lon_range[0] <= lon <= lon_range[1]:
-                E[i, j] = base
+    lat_mask = (grid["lat_grid"] >= lat_range[0]) & (grid["lat_grid"] <= lat_range[1])
+    lon_mask = (grid["lon_grid"] >= lon_range[0]) & (grid["lon_grid"] <= lon_range[1])
+    E[np.ix_(lat_mask, lon_mask)] = base
     return E
 
 

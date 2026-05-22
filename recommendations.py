@@ -11,6 +11,12 @@ from __future__ import annotations
 from heapq import heappush, heappop
 import numpy as np
 
+from risk_profiles import (
+    get_recomendaciones,
+    get_all_groups_summary,
+    RISK_GROUPS,
+    NIVELES_ICA,
+)
 
 # ---------------------------------------------------------------------------
 # Iconos SVG limpios (estilo Lucide/Feather) para visualización en HTML
@@ -165,24 +171,63 @@ def generate_alert(max_ica: float, mean_ica: float) -> dict:
     }
 
 
+def alerta_general_multicontaminante(icas_maximos: dict[str, float]) -> dict:
+    """
+    Muestra el ICA de múltiples contaminantes (ej. PM2.5, PM10, O3, NO2) de forma resumida
+    y genera un nivel de alerta general basado en el peor ICA (el máximo).
+    
+    Args:
+        icas_maximos: dict con el nombre del contaminante y su ICA máximo local, 
+                      ej: {"PM2.5": 150.5, "PM10": 80.0, "O3": 110.2, "NO2": 40.0}
+                      
+    Returns:
+        dict con el desglose por contaminante y la alerta general.
+    """
+    if not icas_maximos:
+        return {}
+
+    # El contaminante principal será el que tenga el mayor índice ICA
+    contaminante_principal = max(icas_maximos, key=icas_maximos.get)
+    max_ica_general = icas_maximos[contaminante_principal]
+
+    # Usamos generate_alert para obtener la alerta global del peor escenario
+    alerta_global = generate_alert(max_ica_general, max_ica_general)
+
+    desglose = []
+    # Mostramos ordenado del mayor al menor ICA
+    for cont, ica_val in sorted(icas_maximos.items(), key=lambda x: x[1], reverse=True):
+        cat, color, icono = _categoria_y_color(ica_val)
+        desglose.append({
+            "contaminante": cont,
+            "ica": round(ica_val, 1),
+            "categoria": cat,
+            "color": color,
+            "icono": icono
+        })
+
+    return {
+        "ica_max_general": round(max_ica_general, 1),
+        "contaminante_principal": contaminante_principal,
+        "alerta_general": alerta_global,
+        "desglose": desglose
+    }
+
+
 # ---------------------------------------------------------------------------
 # Recomendación de cubrebocas
 # ---------------------------------------------------------------------------
 
-def mask_recommendation(ica_local: float) -> str:
-    """Devuelve recomendación de mascarilla en función del ICA local."""
-    if ica_local > 200:
-        return (f'{SVG_ICONS["EMERGENCIA"]} <b>Mascarilla N95 obligatoria.</b> '
-                'Idealmente, permanece en interiores.')
-    if ica_local > 150:
-        return (f'{SVG_ICONS["ALTO"]} <b>Mascarilla N95 recomendada</b> en exteriores.')
-    if ica_local > 100:
-        return (f'{SVG_ICONS["MODERADO"]} <b>KN95 recomendada</b> para grupos sensibles '
-                '(asma, alergias, niños).')
-    if ica_local > 50:
-        return (f'{SVG_ICONS["ACEPTABLE"]} <b>Cubrebocas opcional</b>, solo si presentas '
-                'alergias o irritación.')
-    return f'{SVG_ICONS["BUENA"]} No es necesario cubrebocas por calidad del aire.'
+def mask_recommendation(ica_local: float, grupos_riesgo: list[str] | None = None) -> str:
+    """Devuelve recomendación de mascarilla en función del ICA local y el perfil de riesgo."""
+    if grupos_riesgo is None:
+        grupos_riesgo = ["GENERAL"]
+        
+    recs = get_recomendaciones(ica_local, grupos_riesgo)
+    ica_eff = recs["ica_efectivo"]
+    _, _, icon = _categoria_y_color(ica_eff)
+    texto_cubrebocas = recs["recomendaciones"].get("cubrebocas", "No es necesario")
+    
+    return f'{icon} <b>{texto_cubrebocas}</b>'
 
 
 # ---------------------------------------------------------------------------
@@ -212,138 +257,16 @@ def recomendaciones_detalladas(
     temperatura: float,
     presion: float,
     inversion: bool = False,
+    grupos_riesgo: list[str] | None = None,
 ) -> dict:
     """
-    Construye un panel completo de recomendaciones a partir del estado de
-    calidad del aire y las condiciones meteorológicas.
-
-    Returns:
-        dict con secciones: categoria, color, icono, resumen, evita, puedes,
-        cubrebocas, grupos_sensibles, ventilacion, contexto_clima.
+    Construye un panel completo de recomendaciones delegando al módulo de
+    perfiles de riesgo. Retorna compatibilidad hacia atrás o el nuevo formato.
     """
-    categoria, color, icono = _categoria_y_color(ica_max)
+    if grupos_riesgo is None:
+        grupos_riesgo = ["GENERAL"]
 
-    # --- Evita / Puedes ---
-    if ica_max > 200:
-        evita = [
-            "Toda actividad física al aire libre",
-            "Salir de casa salvo emergencia",
-            "Abrir ventanas o ventilar interiores",
-        ]
-        puedes = [
-            "Permanecer en interiores con aire filtrado",
-            "Reducir actividad física también en interiores",
-        ]
-    elif ica_max > 150:
-        evita = [
-            "Ejercicio intenso al aire libre (correr, ciclismo)",
-            "Actividades prolongadas en exteriores",
-            "Trayectos a pie cerca de avenidas con mucho tráfico",
-        ]
-        puedes = [
-            "Caminatas cortas usando mascarilla",
-            "Actividades en interiores",
-            "Tomar rutas alternativas (ver pestaña de Rutas)",
-        ]
-    elif ica_max > 100:
-        evita = [
-            "Ejercicio aeróbico intenso al aire libre",
-            "Estar cerca de avenidas en hora pico sin protección",
-        ]
-        puedes = [
-            "Actividades moderadas al aire libre",
-            "Caminar por zonas verdes alejadas de vialidades",
-            "Hacer ejercicio en interiores",
-        ]
-    elif ica_max > 50:
-        evita = [
-            "Esfuerzo prolongado si tienes asma o alergias",
-        ]
-        puedes = [
-            "Casi todas las actividades habituales al aire libre",
-            "Ejercicio moderado a intenso si no eres sensible",
-        ]
-    else:
-        evita = ["—"]
-        puedes = [
-            "Todas las actividades al aire libre",
-            "Ejercicio sin restricciones",
-            "Ventilar interiores libremente",
-        ]
-
-    # --- Cubrebocas ---
-    if ica_max > 200:
-        cubrebocas = {
-            "tipo": "N95 obligatorio",
-            "color": "#b00020",
-            "icono": SVG_ICONS["EMERGENCIA"],
-            "detalle": ("Toda la población debe usar N95 si sale; "
-                        "considera quedarte en interiores."),
-        }
-    elif ica_max > 150:
-        cubrebocas = {
-            "tipo": "N95 recomendado",
-            "color": "#e63946",
-            "icono": SVG_ICONS["ALTO"],
-            "detalle": "N95 al transitar zonas con ICA alto; KN95 mínimo.",
-        }
-    elif ica_max > 100:
-        cubrebocas = {
-            "tipo": "KN95 para grupos sensibles",
-            "color": "#ff9f1c",
-            "icono": SVG_ICONS["MODERADO"],
-            "detalle": ("Población general: opcional. Asma/alergias/niños/"
-                        "adultos mayores: KN95 al salir."),
-        }
-    elif ica_max > 50:
-        cubrebocas = {
-            "tipo": "Opcional",
-            "color": "#ffd23f",
-            "icono": SVG_ICONS["ACEPTABLE"],
-            "detalle": "Solo si presentas irritación o tienes alergias.",
-        }
-    else:
-        cubrebocas = {
-            "tipo": "No es necesario",
-            "color": "#00b894",
-            "icono": SVG_ICONS["BUENA"],
-            "detalle": "El aire está limpio.",
-        }
-
-    # --- Grupos sensibles (asma, EPOC, niños, adultos mayores, embarazadas) ---
-    if ica_max > 150:
-        grupos_sensibles = (
-            "**Permanece en interiores.** Si tienes asma o EPOC, ten tu "
-            "medicamento de rescate a la mano y evita esfuerzos."
-        )
-    elif ica_max > 100:
-        grupos_sensibles = (
-            "**Limita la exposición al aire libre.** Evita ejercicio fuera; "
-            "usa KN95 si necesitas salir. Niños no deben hacer deporte exterior."
-        )
-    elif ica_max > 50:
-        grupos_sensibles = (
-            "**Precaución.** Si presentas síntomas (tos, ojos irritados, "
-            "opresión en el pecho), reduce la exposición."
-        )
-    else:
-        grupos_sensibles = "Sin precauciones especiales hoy."
-
-    # --- Ventilación ---
-    if ica_max > 150:
-        ventilacion = (
-            "**Mantén ventanas cerradas.** Usa purificador con filtro HEPA "
-            "si tienes; evita encender ventilador hacia el exterior."
-        )
-    elif ica_max > 100:
-        ventilacion = (
-            "Ventila solo brevemente y en horas de mejor calidad del aire "
-            "(madrugada o mediodía con viento)."
-        )
-    else:
-        ventilacion = "Puedes ventilar normalmente."
-
-    # --- Contexto climático: por qué está así, qué esperar ---
+    # Obtener el contexto de clima
     razones = []
     if inversion:
         razones.append(
@@ -372,49 +295,75 @@ def recomendaciones_detalladas(
             f"**Temperatura baja ({temperatura:.0f}°C)**: favorece "
             "estabilidad nocturna y mayor uso de calefacción."
         )
-
     if not razones:
         razones.append(
             "Condiciones meteorológicas favorables para la dispersión."
         )
 
+    # Delegar a risk_profiles
+    recs_riesgo = get_recomendaciones(ica_max, grupos_riesgo)
+    ica_eff = recs_riesgo["ica_efectivo"]
+    cat, color, icono = _categoria_y_color(ica_eff)
+    
+    # Construir objeto resultante compatible y extendido
     return {
         "ica_max": ica_max,
         "ica_medio": ica_medio,
-        "categoria": categoria,
+        "ica_efectivo": ica_eff,
+        "nivel": recs_riesgo["nivel"],
+        "categoria": cat,
         "color": color,
         "icono": icono,
-        "evita": evita,
-        "puedes": puedes,
-        "cubrebocas": cubrebocas,
-        "grupos_sensibles": grupos_sensibles,
-        "ventilacion": ventilacion,
         "contexto_clima": razones,
+        "recomendaciones": recs_riesgo["recomendaciones"],
+        "grupos_seleccionados": [RISK_GROUPS[g] for g in grupos_riesgo],
     }
+
+def resumen_todos_los_grupos(ica_real: float) -> list[dict]:
+    """Genera la vista comparativa de todos los grupos."""
+    resumen = get_all_groups_summary(ica_real)
+    for r in resumen:
+        _, color, icono = _categoria_y_color(r["ica_efectivo"])
+        r["color_hex"] = color
+        r["icono_svg"] = icono
+    return resumen
 
 
 def recomendaciones_pronostico(forecast_results: list[dict],
+                               grupos_riesgo: list[str] | None = None,
                                umbral: float = 100.0) -> list[dict]:
     """
-    Convierte un pronóstico horario en recomendaciones por ventana de tiempo.
-    Cada item incluye qué hacer durante esa hora.
+    Convierte un pronóstico horario en recomendaciones por ventana de tiempo
+    considerando los grupos de riesgo.
     """
     out = []
     for r in forecast_results:
         ica = r.get("ica_max", 0)
-        cat, color, icono = _categoria_y_color(ica)
-        if ica > 150:
-            accion = "Quédate en interiores"
-        elif ica > 100:
-            accion = "Limita exteriores · usa KN95 si sales"
-        elif ica > 50:
-            accion = "Actividades exteriores moderadas"
+        
+        # Ajustar el ICA al perfil de riesgo si hay grupos
+        if grupos_riesgo:
+            from risk_profiles import get_recomendaciones
+            recs = get_recomendaciones(ica, grupos_riesgo)
+            ica_eff = recs["ica_efectivo"]
+            accion = recs["recomendaciones"].get("actividad_exterior", "")
+            cat, color, icono = _categoria_y_color(ica_eff)
+            ica_mostrar = ica_eff
         else:
-            accion = "Sin restricciones"
+            cat, color, icono = _categoria_y_color(ica)
+            ica_mostrar = ica
+            if ica > 150:
+                accion = "Quédate en interiores"
+            elif ica > 100:
+                accion = "Limita exteriores · usa KN95 si sales"
+            elif ica > 50:
+                accion = "Actividades exteriores moderadas"
+            else:
+                accion = "Sin restricciones"
+                
         out.append({
             "datetime": r["datetime"],
             "hora": r["hora"],
-            "ica_max": ica,
+            "ica_max": ica_mostrar,
             "categoria": cat,
             "color": color,
             "icono": icono,
@@ -526,42 +475,33 @@ def factores_ambientales(viento_ms: float, viento_dir: float,
 
 def recomendaciones_de_accion(max_ica: float, mean_ica: float,
                               factores: list[dict],
-                              pico_proximas_horas: dict | None = None) -> list[str]:
+                              pico_proximas_horas: dict | None = None,
+                              grupos_riesgo: list[str] | None = None) -> list[str]:
     """
     Lista de recomendaciones de acción concretas para el usuario,
     derivadas del ICA actual + factores ambientales + pronóstico próximo.
-
-    Returns:
-        Lista de strings HTML (cada uno una acción sugerida con su ícono SVG).
     """
     recs: list[str] = []
+    
+    if grupos_riesgo is None:
+        grupos_riesgo = ["GENERAL"]
+    
+    from risk_profiles import get_recomendaciones
+    recs_riesgo = get_recomendaciones(max_ica, grupos_riesgo)
+    ica_eff = recs_riesgo["ica_efectivo"]
+    recs_act = recs_riesgo["recomendaciones"]
 
-    # Recomendación principal por nivel
-    if max_ica > 200:
-        recs.append(
-            f"{SVG_ICONS['EMERGENCIA']} <b>Permanece en interiores</b> si es posible. "
-            "Cierra ventanas y evita ejercicio físico."
-        )
-    elif max_ica > 150:
-        recs.append(
-            f"{SVG_ICONS['ALTO']} <b>Evita ejercicio al aire libre.</b> "
-            "Si vas a salir, usa mascarilla N95."
-        )
-    elif max_ica > 100:
-        recs.append(
-            f"{SVG_ICONS['MODERADO']} <b>Personas sensibles</b> (asma, niños, mayores) "
-            "deben limitar el tiempo en exteriores."
-        )
-    elif max_ica > 50:
-        recs.append(
-            f"{SVG_ICONS['ACEPTABLE']} Calidad aceptable; toma precauciones solo si "
-            "tienes alergias o sensibilidad respiratoria."
-        )
-    else:
-        recs.append(
-            f"{SVG_ICONS['BUENA']} Aire limpio: puedes realizar actividades al "
-            "aire libre sin restricciones."
-        )
+    _, _, icon = _categoria_y_color(ica_eff)
+    
+    # Añadimos algunas de las recomendaciones de risk_profiles como lista de acciones
+    if recs_act.get("actividad_exterior"):
+        recs.append(f"{icon} <b>Actividades exteriores:</b> {recs_act['actividad_exterior']}")
+    if recs_act.get("ejercicio"):
+        recs.append(f"{SVG_ICONS['VIENTO']} <b>Ejercicio:</b> {recs_act['ejercicio']}")
+    if recs_act.get("cubrebocas"):
+        recs.append(f"{icon} <b>Cubrebocas:</b> {recs_act['cubrebocas']}")
+    if recs_act.get("ventilacion"):
+        recs.append(f"{SVG_ICONS['MEZCLA']} <b>Ventilación:</b> {recs_act['ventilacion']}")
 
     # Recomendaciones basadas en factores específicos
     factores_malos = [f for f in factores if f["impacto"] in ("malo", "crítico")]
@@ -585,15 +525,19 @@ def recomendaciones_de_accion(max_ica: float, mean_ica: float,
     if pico_proximas_horas and pico_proximas_horas.get("hora_pico"):
         hp = pico_proximas_horas["hora_pico"]
         ica_pico = pico_proximas_horas["ica_pico"]
-        if ica_pico > max_ica + 20:
+        # Convertimos el pico a ica efectivo
+        recs_pico = get_recomendaciones(ica_pico, grupos_riesgo)
+        ica_pico_eff = recs_pico["ica_efectivo"]
+        
+        if ica_pico_eff > ica_eff + 20:
             recs.append(
                 f"<b>Empeoramiento previsto</b> hacia las {hp:02d}:00 "
-                f"(ICA proyectado: {ica_pico:.0f}). Si planeas salir, hazlo antes."
+                f"(ICA proyectado para tu perfil: {ica_pico_eff:.0f}). Si planeas salir, hazlo antes."
             )
-        elif ica_pico + 20 < max_ica:
+        elif ica_pico_eff + 20 < ica_eff:
             recs.append(
                 f"<b>Mejora prevista</b> hacia las {hp:02d}:00 "
-                f"(ICA proyectado: {ica_pico:.0f}). Si puedes posponer la actividad, hazlo."
+                f"(ICA proyectado para tu perfil: {ica_pico_eff:.0f}). Si puedes posponer la actividad, hazlo."
             )
 
     return recs

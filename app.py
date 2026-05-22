@@ -45,8 +45,9 @@ loading_placeholder = show_loading_screen()
 # =====================================================================
 import base64
 import io
-from datetime import datetime
-
+from datetime import datetime, timedelta
+import concurrent.futures
+import os
 import folium
 import matplotlib
 matplotlib.use("Agg")  # backend sin display, para renderizar a PNG
@@ -78,6 +79,7 @@ from sima import (
 from weather import get_current_weather, get_hourly_forecast, grados_a_cardinal
 from recommendations import (
     detectar_picos, factores_ambientales, find_clean_route, generate_alert,
+    alerta_general_multicontaminante,
     hourly_pollution_forecast, mask_recommendation,
     recomendaciones_de_accion, recomendaciones_pronostico, route_stats,
 )
@@ -87,6 +89,7 @@ from landuse import (
     LUSE_ZONA_ABIERTA, LUSE_ZONA_AGUA, LUSE_ZONA_INDUSTRIAL,
     fetch_osm_landuse,
 )
+from risk_profiles import RISK_GROUPS, get_all_groups_summary
 
 
 # =====================================================================
@@ -180,6 +183,91 @@ def simular_animacion_cached(hora, contaminante, viento_ms, viento_dir,
         tiempo_simulado_s=tiempo_simulado_s,
         n_frames=n_frames,
     )
+
+
+@st.cache_data(show_spinner="Evaluando alerta multicontaminante…")
+def calcular_icas_multicontaminante(hora, viento_ms, viento_dir,
+                                     temperatura, presion, factor_trafico,
+                                     factor_industrial, inversion,
+                                     es_dia_laboral, usar_osm):
+    """Calcula ICA máximo de PM2.5, PM10 y NO2 en paralelo."""
+    grid, mask, _ = cargar_grid_y_infra()
+    roads = cargar_red_vial(usar_osm)
+    icas = {}
+    
+    # Dejar al menos 1 core libre (o usar un maximo del 90%)
+    max_w = max(1, int(os.cpu_count() * 0.90)) if os.cpu_count() else 3
+    # Necesitamos como mucho 3 hilos aquí
+    max_w = min(max_w, 3)
+    
+    def calc_single(cont):
+        res = simular_con_trafico(
+            grid, roads,
+            hora=hora, contaminante=cont,
+            viento_ms=viento_ms, viento_dir=viento_dir,
+            temperatura=temperatura, presion=presion,
+            factor_trafico=factor_trafico,
+            factor_industrial=factor_industrial,
+            inversion_termica=inversion,
+            es_dia_laboral=es_dia_laboral,
+        )
+        return cont, float(res["ica"][mask].max())
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
+        futuros = [executor.submit(calc_single, c) for c in ["PM2.5", "PM10", "NOx"]]
+        for futuro in concurrent.futures.as_completed(futuros):
+            cont, val = futuro.result()
+            icas[cont] = val
+
+    return icas
+
+
+@st.cache_data(show_spinner="Calculando pronóstico de las próximas horas…")
+def calcular_pronostico_corto(contaminante, factor_trafico, factor_industrial,
+                              es_dia_laboral, usar_osm,
+                              _horas_key):
+    """Calcula pronóstico ICA de las próximas ~7 horas en paralelo."""
+    grid, mask, _ = cargar_grid_y_infra()
+    roads = cargar_red_vial(usar_osm)
+    pron_meteo = get_hourly_forecast(horas=7)
+    
+    max_w = max(1, int(os.cpu_count() * 0.90)) if os.cpu_count() else 4
+    
+    def calc_hour(p):
+        inv_p = (p["temperatura"] < 10 and p["velocidad_viento"] < 2.0
+                 and p["presion"] > 1018)
+        r_p = simular_con_trafico(
+            grid, roads,
+            hora=p["hora"], contaminante=contaminante,
+            viento_ms=p["velocidad_viento"],
+            viento_dir=p["direccion_viento"],
+            temperatura=p["temperatura"],
+            presion=p["presion"],
+            factor_trafico=factor_trafico,
+            factor_industrial=factor_industrial,
+            inversion_termica=inv_p,
+            es_dia_laboral=p["datetime"].weekday() < 5,
+        )
+        return {
+            "datetime": p["datetime"],
+            "hora": p["hora"],
+            "ica_max": float(r_p["ica"][mask].max()),
+        }
+
+    forecast_ica = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_w) as executor:
+        futuros = [executor.submit(calc_hour, p) for p in pron_meteo]
+        for futuro in concurrent.futures.as_completed(futuros):
+            forecast_ica.append(futuro.result())
+            
+    # Ordenar chronológicamente ya que as_completed puede devolver en cualquier orden
+    forecast_ica.sort(key=lambda x: x["datetime"])
+
+    pico = None
+    if forecast_ica:
+        p_max = max(forecast_ica, key=lambda x: x["ica_max"])
+        pico = {"hora_pico": p_max["hora"], "ica_pico": p_max["ica_max"]}
+    return forecast_ica, pico
 
 
 # =====================================================================
@@ -460,7 +548,7 @@ def selector_direccion_viento(default_deg: int = 90, key: str = "viento_dir",
 # HEATMAP RGBA Y MAPAS
 # =====================================================================
 
-def ica_a_rgba(ica_matrix, mask=None, sigma=1.8, upscale=6,
+def ica_a_rgba(ica_matrix, mask=None, sigma=1.8, upscale=4,
                alto_contraste: bool = False):
     """
     Convierte una matriz de ICA en una imagen RGBA suave tipo "mancha de calor".
@@ -526,7 +614,7 @@ _LUSE_STYLE = {
 
 
 def _landuse_rgba(landuse_map: np.ndarray, mask: np.ndarray,
-                  upscale: int = 6) -> np.ndarray:
+                  upscale: int = 4) -> np.ndarray:
     """
     Convierte la matriz landuse_map en una imagen RGBA para overlay en Folium.
     Cada tipo de celda recibe su color semisólido; fuera de la máscara es transparente.
@@ -894,6 +982,24 @@ with st.sidebar:
     alto_contraste = st.session_state["alto_contraste"]
 
     st.markdown("---")
+    
+    st.markdown("### Perfil de Riesgo")
+    opciones_riesgo = list(RISK_GROUPS.keys())
+    def formato_opcion(k):
+        info = RISK_GROUPS[k]
+        return f"{info['icono']} {info['nombre']}"
+        
+    grupos_riesgo = st.multiselect(
+        "Selecciona tus condiciones (puedes elegir varias):",
+        opciones_riesgo,
+        default=["GENERAL"],
+        format_func=formato_opcion,
+        help="El sistema ajustará las recomendaciones y umbrales de ICA según el grupo más sensible seleccionado."
+    )
+    if not grupos_riesgo:
+        grupos_riesgo = ["GENERAL"]
+
+    st.markdown("---")
 
     # ---- Selector de modo ----
     modo = st.radio(
@@ -1118,6 +1224,10 @@ traffic_map = res["traffic"]
 # Métricas dentro del polígono únicamente
 A_dentro = A[mask]
 C_dentro = C[mask]
+ica_max_val = float(A_dentro.max())
+ica_med_val = float(A_dentro.mean())
+ica_p95_val = float(np.percentile(A_dentro, 95))
+cat_med, _ = categoria_ica(ica_med_val)
 
 
 # =====================================================================
@@ -1159,12 +1269,35 @@ st.markdown(
 )
 
 
-# --- Alerta principal (color-coded por nivel ICA) ---
-alert = generate_alert(A_dentro.max(), A_dentro.mean())
-ica_max_val = float(A_dentro.max())
-ica_med_val = float(A_dentro.mean())
-ica_p95_val = float(np.percentile(A_dentro, 95))
-cat_med, _ = categoria_ica(ica_med_val)
+# --- Alerta principal (color-coded por nivel ICA y desglose de contaminantes) ---
+icas_maximos_todos = calcular_icas_multicontaminante(
+    hora=hora, viento_ms=viento_ms, viento_dir=viento_dir,
+    temperatura=temperatura, presion=presion,
+    factor_trafico=factor_trafico_efectivo,
+    factor_industrial=factor_industrial,
+    inversion=inversion,
+    es_dia_laboral=es_dia_laboral, usar_osm=usar_osm,
+)
+
+resumen_multicontaminante = alerta_general_multicontaminante(icas_maximos_todos)
+alert = resumen_multicontaminante["alerta_general"]
+ica_max_general = resumen_multicontaminante["ica_max_general"]
+contaminante_principal = resumen_multicontaminante["contaminante_principal"]
+
+# Construir HTML para el desglose de contaminantes
+html_desglose = '<div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">'
+for item in resumen_multicontaminante["desglose"]:
+    html_desglose += f"""
+    <div style="background: rgba(255,255,255,0.8); padding: 8px 12px; border-radius: 6px; 
+                border-left: 4px solid {item['color']}; flex: 1; min-width: 100px;">
+        <div style="font-size: 12px; color: #555; font-weight: bold;">{item['contaminante']}</div>
+        <div style="font-size: 16px; font-weight: 800; color: #111;">{item['ica']}</div>
+        <div style="font-size: 11px; color: {item['color']}; display: flex; align-items: center; gap: 4px;">
+            {item['icono'].replace('width="18"', 'width="12"').replace('height="18"', 'height="12"')} {item['categoria']}
+        </div>
+    </div>
+    """
+html_desglose += '</div>'
 
 st.markdown(
     f"""
@@ -1173,15 +1306,16 @@ st.markdown(
                 border: 2px solid rgba(0,0,0,0.35);">
         <div style="display:flex; justify-content:space-between; align-items:baseline;">
           <div style="font-size:22px; font-weight:800; display:flex; align-items:center; gap:8px;">
-              {alert['icono']} {alert['nivel']} &nbsp;·&nbsp; ICA medio {ica_med_val:.0f} ({cat_med})
+              {alert['icono']} Alerta General: {alert['nivel']}
           </div>
           <div style="font-size:14px; opacity:0.85;">
-              máx {ica_max_val:.0f} · p95 {ica_p95_val:.0f}
+              Principal: {contaminante_principal} (máx {ica_max_general:.0f})
           </div>
         </div>
         <div style="font-size:14px; margin-top:6px; line-height:1.5;">
             {alert['mensaje']}
         </div>
+        {html_desglose}
     </div>
     """,
     unsafe_allow_html=True,
@@ -1192,35 +1326,19 @@ st.markdown(
 # Calcular pronóstico próximas horas (modos real y pronóstico)
 # ----------------------------------------------------------------
 pico_proximas = None
-forecast_ica = []  # lista de (datetime, ica_max, categoria_color)
+forecast_ica = []
 if es_modo_real or es_modo_pronostico:
     try:
-        pron_meteo = get_hourly_forecast(horas=7)
-        for p in pron_meteo:
-            r_p = simular_snapshot(
-                hora=p["hora"], contaminante=contaminante,
-                viento_ms=p["velocidad_viento"],
-                viento_dir=p["direccion_viento"],
-                temperatura=p["temperatura"],
-                presion=p["presion"],
-                factor_trafico=factor_trafico_efectivo,
-                factor_industrial=factor_industrial,
-                inversion=(p["temperatura"] < 10 and p["velocidad_viento"] < 2.0
-                           and p["presion"] > 1018),
-                es_dia_laboral=p["datetime"].weekday() < 5,
-                usar_osm=usar_osm,
-            )
-            ica_p = float(r_p["ica"][mask].max())
-            forecast_ica.append({
-                "datetime": p["datetime"],
-                "hora": p["hora"],
-                "ica_max": ica_p,
-            })
-        # Pico futuro
-        if forecast_ica:
-            pico = max(forecast_ica, key=lambda x: x["ica_max"])
-            pico_proximas = {"hora_pico": pico["hora"],
-                             "ica_pico": pico["ica_max"]}
+        # Clave de caché basada en la hora actual (truncada) para invalidar cada hora
+        _horas_key = (datetime.now().strftime("%Y-%m-%d-%H"),)
+        forecast_ica, pico_proximas = calcular_pronostico_corto(
+            contaminante=contaminante,
+            factor_trafico=factor_trafico_efectivo,
+            factor_industrial=factor_industrial,
+            es_dia_laboral=es_dia_laboral,
+            usar_osm=usar_osm,
+            _horas_key=_horas_key,
+        )
     except Exception:
         forecast_ica = []
 
@@ -1234,14 +1352,30 @@ factores = factores_ambientales(
     hora, perfil_pct, factor_trafico_efectivo, inversion,
 )
 acciones = recomendaciones_de_accion(
-    ica_max_val, ica_med_val, factores, pico_proximas
+    ica_max_val, ica_med_val, factores, pico_proximas, grupos_riesgo=grupos_riesgo
 )
 
 # Mostrar acciones recomendadas
 with st.expander("**¿Qué hacer ahora?**", expanded=True):
     for a in acciones:
         st.markdown(f"{a}", unsafe_allow_html=True)
-    st.markdown(f"**Cubrebocas**: {mask_recommendation(ica_max_val)}", unsafe_allow_html=True)
+    st.markdown(f"**Cubrebocas**: {mask_recommendation(ica_max_val, grupos_riesgo)}", unsafe_allow_html=True)
+
+with st.expander("**Estado por Grupos de Riesgo**", expanded=False):
+    st.markdown("Visión general de impacto según perfil (basado en el ICA máximo actual):")
+    resumen = get_all_groups_summary(ica_max_val)
+    cols = st.columns(len(resumen))
+    for i, r in enumerate(resumen):
+        with cols[i]:
+            c_hex = r['nivel']['color']
+            st.markdown(f"""
+            <div style="text-align: center; background: {c_hex}22; padding: 10px; border-radius: 8px; border: 1px solid {c_hex}; height: 100%;">
+                <div style="font-size: 24px;">{r['icono']}</div>
+                <div style="font-size: 11px; font-weight: bold; margin-top: 4px;">{r['nombre']}</div>
+                <div style="font-size: 13px; color: {c_hex}; font-weight: 800; margin-top: 4px;">{r['nivel']['nombre']}</div>
+                <div style="font-size: 10px; color: #666; margin-top: 2px;">ICA ef: {r['ica_efectivo']:.0f}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 # ----------------------------------------------------------------
@@ -1322,67 +1456,63 @@ with st.expander("**Métricas detalladas de la simulación actual**", expanded=T
     m4.metric(f"{contaminante} máx", f"{C_dentro.max():.1f} μg/m³")
 
 
-# Tarjeta "Medido en vivo": solo en modos tiempo real / pronóstico,
-# trae automáticamente la lectura modelada de Open-Meteo Air Quality
-# (CAMS global) y la compara con lo que el simulador local predice.
+# Tarjeta "Medido en vivo": solo en modos tiempo real / pronóstico.
+# Se carga de forma lazy (dentro de un expander) para no bloquear el render inicial.
 if not es_modo_escenario:
-    from weather import get_current_air_quality
-    with st.spinner("Consultando Open-Meteo Air Quality..."):
+    with st.expander("**Comparación con lectura en vivo (Open-Meteo)**", expanded=False):
+        from weather import get_current_air_quality
         med = get_current_air_quality(lat=CENTER_LAT, lon=CENTER_LON)
 
-    col_map_om = {"PM2.5": "pm2_5", "PM10": "pm10",
-                  "NOx": "no2", "SO2": "so2"}
-    valor_medido = med.get(col_map_om.get(contaminante, "pm2_5"))
+        col_map_om = {"PM2.5": "pm2_5", "PM10": "pm10",
+                      "NOx": "no2", "SO2": "so2"}
+        valor_medido = med.get(col_map_om.get(contaminante, "pm2_5"))
 
-    if med["ok"] and valor_medido is not None:
-        # Calcular ICA simulado del centro del polígono para comparar
-        from simulator import calculate_ica
-        centro_i = grid["filas"] // 2
-        centro_j = grid["columnas"] // 2
-        # Tomar promedio de 5x5 alrededor del centro de CU
-        sub_C = C_dentro[max(0, centro_i-2):centro_i+3,
-                         max(0, centro_j-2):centro_j+3] \
-                if C_dentro.ndim == 2 else None
-        c_sim_centro = float(sub_C.mean()) if sub_C is not None else \
-                       float(np.mean(C_dentro))
-        ica_medido_array = calculate_ica(np.array([valor_medido]), contaminante)
-        ica_medido = float(ica_medido_array[0])
-        cat_med_om, _ = categoria_ica(ica_medido)
+        if med["ok"] and valor_medido is not None:
+            from simulator import calculate_ica
+            centro_i = grid["filas"] // 2
+            centro_j = grid["columnas"] // 2
+            sub_C = C_dentro[max(0, centro_i-2):centro_i+3,
+                             max(0, centro_j-2):centro_j+3] \
+                    if C_dentro.ndim == 2 else None
+            c_sim_centro = float(sub_C.mean()) if sub_C is not None else \
+                           float(np.mean(C_dentro))
+            ica_medido_array = calculate_ica(np.array([valor_medido]), contaminante)
+            ica_medido = float(ica_medido_array[0])
+            cat_med_om, _ = categoria_ica(ica_medido)
 
-        diff_ugm3 = c_sim_centro - valor_medido
-        diff_str = f"{diff_ugm3:+.1f} μg/m³ vs simulado"
+            diff_ugm3 = c_sim_centro - valor_medido
+            diff_str = f"{diff_ugm3:+.1f} μg/m³ vs simulado"
 
-        st.markdown("##### Comparación con lectura en vivo")
-        live1, live2, live3, live4 = st.columns(4)
-        live1.metric(
-            f"{contaminante} medido",
-            f"{valor_medido:.1f} μg/m³",
-            help=f"Fuente: {med['fuente']} · "
-                 f"hora: {med['fecha'] or 'reciente'}",
-        )
-        live2.metric(
-            f"{contaminante} simulado (centro CU)",
-            f"{c_sim_centro:.1f} μg/m³",
-            diff_str,
-            delta_color="normal",
-        )
-        live3.metric("ICA medido (NOM-172)",
-                     f"{ica_medido:.0f}", cat_med_om)
-        live4.metric("US AQI (Open-Meteo)",
-                     f"{med['us_aqi']:.0f}" if med['us_aqi'] is not None else "—",
-                     "EPA estándar")
+            live1, live2, live3, live4 = st.columns(4)
+            live1.metric(
+                f"{contaminante} medido",
+                f"{valor_medido:.1f} μg/m³",
+                help=f"Fuente: {med['fuente']} · "
+                     f"hora: {med['fecha'] or 'reciente'}",
+            )
+            live2.metric(
+                f"{contaminante} simulado (centro CU)",
+                f"{c_sim_centro:.1f} μg/m³",
+                diff_str,
+                delta_color="normal",
+            )
+            live3.metric("ICA medido (NOM-172)",
+                         f"{ica_medido:.0f}", cat_med_om)
+            live4.metric("US AQI (Open-Meteo)",
+                         f"{med['us_aqi']:.0f}" if med['us_aqi'] is not None else "—",
+                         "EPA estándar")
 
-        st.caption(
-            f"Datos de **CAMS** vía Open-Meteo (modelo global ~45 km, "
-            f"actualizado cada 12 h). Para comparar con otas fuentes"
-            f"de datos, ve al tab **Validación SIMA** y usa "
-            f"un CSV descargado de SINAICA."
-        )
-    elif not med["ok"]:
-        st.caption(
-            f"*Lectura en vivo de Open-Meteo Air Quality no disponible "
-            f"({med['fuente']}). La simulación local sigue funcionando.*"
-        )
+            st.caption(
+                f"Datos de **CAMS** vía Open-Meteo (modelo global ~45 km, "
+                f"actualizado cada 12 h). Para comparar con otras fuentes "
+                f"de datos, ve al tab **Validación SIMA** y usa "
+                f"un CSV descargado de SINAICA."
+            )
+        elif not med["ok"]:
+            st.caption(
+                f"*Lectura en vivo de Open-Meteo Air Quality no disponible "
+                f"({med['fuente']}). La simulación local sigue funcionando.*"
+            )
 
 
 # =====================================================================
@@ -2115,13 +2245,21 @@ with tab_validacion:
         else:
             i_est, j_est = grid["filas"] // 2, grid["columnas"] // 2
 
+        # Estimar concentración de fondo regional (background) 
+        # asumiendo que el valor mínimo observado en la estación es el fondo de la ciudad.
+        df_estacion = df_sima[df_sima["estacion"] == estacion_val]
+        if df_estacion.empty:
+            df_estacion = df_sima
+        fondo_regional = float(df_estacion["valor"].min()) if not df_estacion.empty else 0.0
+
         pred_por_hora = {}
         for f in frames_val:
             # Promedio de la concentración en una vecindad 5×5 de la estación
             i0, i1 = max(0, i_est - 2), min(grid["filas"], i_est + 3)
             j0, j1 = max(0, j_est - 2), min(grid["columnas"], j_est + 3)
             sub = f["C"][i0:i1, j0:j1]
-            pred_por_hora[f["hora"]] = float(sub.mean())
+            # Sumamos el fondo regional a la contribución local del simulador
+            pred_por_hora[f["hora"]] = float(sub.mean()) + fondo_regional
 
         resultado = validar_serie(df_sima, estacion_val, pred_por_hora)
         m = resultado["metricas"]
@@ -2182,7 +2320,7 @@ with tab_validacion:
 # ----- TAB 4: INFO -----
 with tab_info:
     st.markdown(
-        """
+        r"""
         ### Acerca del modelo
 
         Esta simulación implementa la **propuesta del Equipo 11 — Brigada 003**

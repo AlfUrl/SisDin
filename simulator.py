@@ -169,15 +169,12 @@ def build_infrastructure(grid):
                         if inf[ni, nj] != INF_FABRICA:
                             inf[ni, nj] = info["tipo"]
 
-    # Ternium (rectángulo)
-    for i in range(grid["filas"]):
-        lat = grid["lat_grid"][i]
-        if not (TERNIUM_AREA["lat_range"][0] <= lat <= TERNIUM_AREA["lat_range"][1]):
-            continue
-        for j in range(grid["columnas"]):
-            lon = grid["lon_grid"][j]
-            if TERNIUM_AREA["lon_range"][0] <= lon <= TERNIUM_AREA["lon_range"][1]:
-                inf[i, j] = INF_FABRICA
+    # Ternium (rectángulo) — vectorizado con NumPy
+    lat_mask = (grid["lat_grid"] >= TERNIUM_AREA["lat_range"][0]) & \
+               (grid["lat_grid"] <= TERNIUM_AREA["lat_range"][1])
+    lon_mask = (grid["lon_grid"] >= TERNIUM_AREA["lon_range"][0]) & \
+               (grid["lon_grid"] <= TERNIUM_AREA["lon_range"][1])
+    inf[np.ix_(lat_mask, lon_mask)] = INF_FABRICA
 
     return inf
 

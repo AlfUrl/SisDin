@@ -203,12 +203,11 @@ def show_loading_screen():
             )
         # Pequeño delay para asegurar que Streamlit envíe y renderice el HTML del loading screen
         # en el navegador del cliente antes de iniciar la importación pesada de librerías.
-        time.sleep(0.1)
+        time.sleep(0.01)
     return loading_placeholder
 
 def remove_loading_screen(loading_placeholder):
     """Remueve la pantalla de carga e inicializa la aplicación."""
     if not st.session_state.get("app_loaded", False) and loading_placeholder is not None:
-        time.sleep(0.5)  # Breve pausa para suavidad visual
         loading_placeholder.empty()
         st.session_state["app_loaded"] = True

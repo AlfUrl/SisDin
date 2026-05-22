@@ -48,17 +48,8 @@ import io
 from datetime import datetime, timedelta
 import concurrent.futures
 import os
-import folium
-import matplotlib
-matplotlib.use("Agg")  # backend sin display, para renderizar a PNG
-import matplotlib.colors as mcolors
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon as MplPolygon, Rectangle
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from PIL import Image
-from streamlit_folium import st_folium
 
 from simulator import (
     CENTER_LAT, CENTER_LON, POLYGON_LIMITS, TERNIUM_AREA,
@@ -289,6 +280,7 @@ ICA_MAX_PLOT = 250  # tope de la escala de color
 
 def _crear_colormap_striking():
     """Colormap de matplotlib vívido y continuo para el ICA."""
+    import matplotlib.colors as mcolors
     pts = [(v / ICA_MAX_PLOT, c) for v, c in ICA_STRIKING_STOPS]
     return mcolors.LinearSegmentedColormap.from_list("ica_striking", pts, N=256)
 
@@ -311,6 +303,7 @@ ICA_HIGH_CONTRAST_STOPS = [
 
 def _crear_colormap_alto_contraste():
     """Colormap saturado/eléctrico para modo de alto contraste."""
+    import matplotlib.colors as mcolors
     pts = [(v / ICA_MAX_PLOT, c) for v, c in ICA_HIGH_CONTRAST_STOPS]
     return mcolors.LinearSegmentedColormap.from_list("ica_hc", pts, N=256)
 
@@ -564,6 +557,8 @@ def ica_a_rgba(ica_matrix, mask=None, sigma=1.8, upscale=4,
 
     campo_suave = _suavizar_campo(campo, sigma=sigma)
 
+    import matplotlib.colors as mcolors
+    from PIL import Image
     cmap = _cmap_para(alto_contraste)
     norm = mcolors.Normalize(vmin=0, vmax=ICA_MAX_PLOT)
     rgba = cmap(norm(campo_suave))  # (filas, cols, 4) en [0,1]
@@ -614,6 +609,8 @@ def _landuse_rgba(landuse_map: np.ndarray, mask: np.ndarray,
     Convierte la matriz landuse_map en una imagen RGBA para overlay en Folium.
     Cada tipo de celda recibe su color semisólido; fuera de la máscara es transparente.
     """
+    import matplotlib.colors as mcolors
+    from PIL import Image
     h, w = landuse_map.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
     for luse_type, style in _LUSE_STYLE.items():
@@ -631,12 +628,14 @@ def _landuse_rgba(landuse_map: np.ndarray, mask: np.ndarray,
     return np.array(img)
 
 
-def _agregar_landuse_overlay(mapa: folium.Map, grid: dict, mask: np.ndarray,
+def _agregar_landuse_overlay(mapa, grid: dict, mask: np.ndarray,
                               landuse_map: np.ndarray) -> None:
     """
     Añade una capa de uso de suelo semi-transparente sobre el mapa Folium.
     Los colores representan el tipo de celda que afecta la fricción del viento.
     """
+    import folium
+    from PIL import Image
     rgba8 = _landuse_rgba(landuse_map, mask)
     rgba_flip = np.flipud(rgba8)
     img = Image.fromarray(rgba_flip, mode="RGBA")
@@ -667,6 +666,8 @@ def construir_mapa(grid, mask, inf, ica_matrix, roads=None, ruta_puntos=None,
                    ruta_limpia=None, contaminante="PM2.5", usar_osm=False,
                    alto_contraste: bool = False, landuse_map=None):
     """Construye el mapa Folium con todas las capas."""
+    import folium
+    from PIL import Image
     tiles = "CartoDB dark_matter" if alto_contraste else "CartoDB Positron"
     mapa = folium.Map(
         location=[CENTER_LAT, CENTER_LON],
@@ -826,6 +827,11 @@ def _render_frame_mpl(ica_matrix, t_segundos, grid, mask, roads,
     Si `alto_contraste=True`, usa fondo oscuro, colormap saturado y trazos
     en claros, para resaltar al máximo el movimiento de la pluma.
     """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Polygon as MplPolygon, Rectangle
+
     campo = np.where(mask, np.asarray(ica_matrix, dtype=np.float32), 0.0)
     campo_suave = _suavizar_campo(campo, sigma=sigma)
     z = np.where(mask, campo_suave, np.nan)
@@ -1771,6 +1777,14 @@ if not es_modo_escenario:
 # =====================================================================
 # TABS: MAPA / PRONOSTICO / RUTAS
 # =====================================================================
+import plotly.graph_objects as go
+
+# =====================================================================
+# REMOVER PANTALLA DE CARGA INICIAL
+# =====================================================================
+# Remueve la pantalla de carga justo antes de renderizar los tabs,
+# dando una percepción de carga mucho más rápida de la UI principal.
+remove_loading_screen(loading_placeholder)
 
 (tab_mapa, tab_animacion, tab_evolucion, tab_pronostico,
  tab_rutas, tab_validacion, tab_info) = st.tabs(
@@ -1789,6 +1803,7 @@ with tab_mapa:
                           contaminante=contaminante, usar_osm=usar_osm,
                           alto_contraste=alto_contraste, landuse_map=lm)
 
+    from streamlit_folium import st_folium
     st_folium(mapa, width=None, height=580, returned_objects=[])
 
     with st.expander("Mostrar leyenda de uso de suelo", expanded=False):
@@ -2134,6 +2149,7 @@ with tab_evolucion:
     mapa_evol = construir_mapa(grid, mask, inf, A_frame, roads=roads,
                                contaminante=contaminante, usar_osm=usar_osm,
                                alto_contraste=alto_contraste)
+    from streamlit_folium import st_folium
     st_folium(mapa_evol, width=None, height=460,
               returned_objects=[], key=f"map_h{hora_view}")
 
@@ -2421,6 +2437,7 @@ with tab_rutas:
                                             contaminante=contaminante,
                                             usar_osm=usar_osm,
                                             alto_contraste=alto_contraste)
+                from streamlit_folium import st_folium
                 st_folium(mapa_rutas, width=None, height=540,
                           returned_objects=[])
             else:
@@ -2668,9 +2685,4 @@ with tab_info:
         """
     )
 
-
-# =====================================================================
-# REMOVER PANTALLA DE CARGA INICIAL
-# =====================================================================
-remove_loading_screen(loading_placeholder)
 
